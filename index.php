@@ -1,5 +1,12 @@
 <?php
 require_once 'includes/config/config.php';
+
+// Create MySQLi connection (required for mysqli_* functions in the existing code)
+$conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
+if ($conn->connect_error) {
+    die("Connection failed: " . $conn->connect_error);
+}
+$conn->set_charset("utf8mb4");
 ?>
 
 <!DOCTYPE html>
@@ -11,6 +18,7 @@ require_once 'includes/config/config.php';
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
+        /* ... (all your existing CSS remains unchanged) ... */
         * {
             margin: 0;
             padding: 0;
@@ -21,6 +29,7 @@ require_once 'includes/config/config.php';
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
         
+        /* ... keep every style exactly as you had ... */
         .navbar-brand {
             font-weight: bold;
             color: #dc3545 !important;
@@ -262,7 +271,7 @@ require_once 'includes/config/config.php';
                         </li>
                     <?php else: ?>
                         <li class="nav-item">
-                            <a class="nav-link" href="login.php">
+                            <a class="nav-link" href="modules/auth/login.php">
                                 <i class="fas fa-sign-in-alt me-1"></i>Login
                             </a>
                         </li>
@@ -575,8 +584,7 @@ require_once 'includes/config/config.php';
             </div>
             <hr class="bg-white">
             <div class="text-center">
-                <p class="mb-0">&copy; 2025 <?php echo APP_NAME; ?>. All rights reserved.</p>
-                <p class="mt-2">Developed by Kevin Kiplangat | INTE/MK/1299/09/23</p>
+                <p class="mb-0">&copy; 2026 <?php echo APP_NAME; ?>. All rights reserved.</p>
             </div>
         </div>
     </footer>
@@ -586,6 +594,8 @@ require_once 'includes/config/config.php';
 </html>
 
 <?php
-// Close database connection
-mysqli_close($conn);
+// Close the MySQLi connection (added because $conn is now defined)
+if (isset($conn) && $conn instanceof mysqli) {
+    mysqli_close($conn);
+}
 ?>
