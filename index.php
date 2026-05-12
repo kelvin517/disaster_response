@@ -1,5 +1,5 @@
 <?php
-require_once 'includes/config.php';
+require_once 'includes/config/config.php';
 ?>
 
 <!DOCTYPE html>
@@ -267,7 +267,7 @@ require_once 'includes/config.php';
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link btn btn-danger text-white px-3 ms-2" href="register.php">
+                            <a class="nav-link btn btn-danger text-white px-3 ms-2" href="modules/auth/register.php">
                                 <i class="fas fa-user-plus me-1"></i>Register
                             </a>
                         </li>
