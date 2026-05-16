@@ -225,7 +225,7 @@ $conn->set_charset("utf8mb4");
 <body>
     <!-- Emergency Floating Button -->
     <div class="emergency-btn">
-        <a href="report_emergency.php" class="btn btn-danger btn-lg rounded-pill shadow-lg">
+        <a href="modules/incidents/report.php" class="btn btn-danger btn-lg rounded-pill shadow-lg">
             <i class="fas fa-exclamation-triangle me-2"></i>REPORT EMERGENCY
         </a>
     </div>
@@ -245,16 +245,13 @@ $conn->set_charset("utf8mb4");
                         <a class="nav-link active" href="index.php">Home</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="live_map.php">Live Map</a>
+                        <a class="nav-link" href="modules/mapping/map.php">Live Map</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="volunteer.php">Volunteer</a>
+                        <a class="nav-link" href="modules/resources/resources.php">Resources</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="resources.php">Resources</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="alerts.php">Alerts</a>
+                        <a class="nav-link" href="modules/alerts/alerts.php">Alerts</a>
                     </li>
                     <?php if(isset($_SESSION['user_id'])): ?>
                         <li class="nav-item dropdown">
@@ -292,11 +289,11 @@ $conn->set_charset("utf8mb4");
             <h1>Disaster Response & Resource Coordination System</h1>
             <p>Real-time coordination platform connecting victims, volunteers, responders, and NGOs for faster disaster response</p>
             <?php if(!isset($_SESSION['user_id'])): ?>
-                <a href="register.php" class="btn btn-danger-custom btn-lg">
+                <a href="modules/auth/register.php" class="btn btn-danger-custom btn-lg">
                     <i class="fas fa-hand-holding-heart me-2"></i>Join the Response Team
                 </a>
             <?php else: ?>
-                <a href="report_emergency.php" class="btn btn-danger-custom btn-lg">
+                <a href="modules/incidents/report.php" class="btn btn-danger-custom btn-lg">
                     <i class="fas fa-exclamation-triangle me-2"></i>Report Emergency
                 </a>
             <?php endif; ?>
@@ -314,7 +311,7 @@ $conn->set_charset("utf8mb4");
                     </div>
                     <h5>Real-time Emergency Reporting</h5>
                     <p>Report emergencies with GPS location, photos, and details. Get immediate response and tracking.</p>
-                    <a href="report_emergency.php" class="btn btn-outline-danger mt-2">Report Now →</a>
+                    <a href="modules/incidents/report.php" class="btn btn-outline-danger mt-2">Report Now →</a>
                 </div>
             </div>
             <div class="col-md-4">
@@ -324,7 +321,7 @@ $conn->set_charset("utf8mb4");
                     </div>
                     <h5>Live Interactive Maps</h5>
                     <p>View danger zones, safe centers, evacuation routes, and resource distribution points in real-time.</p>
-                    <a href="live_map.php" class="btn btn-outline-danger mt-2">View Map →</a>
+                    <a href="modules/mapping/map.php" class="btn btn-outline-danger mt-2">View Map →</a>
                 </div>
             </div>
             <div class="col-md-4">
@@ -334,7 +331,7 @@ $conn->set_charset("utf8mb4");
                     </div>
                     <h5>Volunteer Coordination</h5>
                     <p>Register your skills, mark availability, and get matched with incidents needing your expertise.</p>
-                    <a href="volunteer.php" class="btn btn-outline-danger mt-2">Join as Volunteer →</a>
+                    <a href="modules/auth/register.php" class="btn btn-outline-danger mt-2">Join as Volunteer →</a>
                 </div>
             </div>
         </div>
@@ -538,11 +535,11 @@ $conn->set_charset("utf8mb4");
                 <h3 class="mb-3">Every Second Counts in a Disaster</h3>
                 <p class="text-muted mb-4">Join our network of responders, volunteers, and organizations working together to save lives and coordinate effective disaster response.</p>
                 <?php if(!isset($_SESSION['user_id'])): ?>
-                    <a href="register.php" class="btn btn-danger btn-lg">
+                    <a href="modules/auth/register.php" class="btn btn-danger btn-lg">
                         <i class="fas fa-hands-helping me-2"></i>Become a Responder Today
                     </a>
                 <?php else: ?>
-                    <a href="report_emergency.php" class="btn btn-danger btn-lg">
+                    <a href="modules/incidents/report.php" class="btn btn-danger btn-lg">
                         <i class="fas fa-phone-alt me-2"></i>Report an Emergency
                     </a>
                 <?php endif; ?>

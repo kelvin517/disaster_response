@@ -9,6 +9,14 @@ if (isLoggedIn()) {
     redirect('modules/incidents/report.php');
 }
 
+// ─── Admin secret code ────────────────────────────────────────────────────────
+// Store this in your config or .env; never hard-code in production.
+// Example: define('ADMIN_SECRET_CODE', 'your-strong-secret') in config.php
+if (!defined('ADMIN_SECRET_CODE')) {
+    define('ADMIN_SECRET_CODE', 'DRS-ADMIN-2025'); // ← change before deploying
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 $error   = null;
 $success = null;
 $post    = []; // repopulate on error
@@ -16,16 +24,21 @@ $post    = []; // repopulate on error
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $post = $_POST;
 
-    $full_name = sanitize($_POST['full_name'] ?? '');
-    $email     = sanitize($_POST['email']     ?? '');
-    $phone     = sanitize($_POST['phone']     ?? '');
-    $password  = $_POST['password']           ?? '';
-    $role      = sanitize($_POST['role']      ?? 'victim');
+    $full_name   = sanitize($_POST['full_name']   ?? '');
+    $email       = sanitize($_POST['email']        ?? '');
+    $phone       = sanitize($_POST['phone']        ?? '');
+    $password    = $_POST['password']              ?? '';
+    $role        = sanitize($_POST['role']         ?? 'victim');
+    $admin_code  = $_POST['admin_code']            ?? '';
 
-    $allowed_roles = ['victim', 'responder', 'volunteer'];
+    $allowed_roles = ['victim', 'responder', 'volunteer', 'admin'];
     if (!in_array($role, $allowed_roles)) $role = 'victim';
 
-    if (empty($full_name) || empty($email) || empty($phone) || empty($password)) {
+    // Validate admin code when role is admin
+    if ($role === 'admin' && $admin_code !== ADMIN_SECRET_CODE) {
+        $error = "Invalid admin access code. Please check your code and try again.";
+        $role  = 'admin'; // keep role selected so the form repopulates correctly
+    } elseif (empty($full_name) || empty($email) || empty($phone) || empty($password)) {
         $error = "All fields are required.";
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = "Please enter a valid email address.";
@@ -63,6 +76,7 @@ $role_labels = [
     'victim'    => ['label' => 'Public / Victim',       'desc' => 'Report incidents & request assistance'],
     'responder' => ['label' => 'Emergency Responder',   'desc' => 'Manage and respond to active incidents'],
     'volunteer' => ['label' => 'Volunteer',              'desc' => 'Pick up tasks and support relief efforts'],
+    'admin'     => ['label' => 'Administrator',          'desc' => 'Full system access & management'],
 ];
 ?>
 <!DOCTYPE html>
@@ -84,6 +98,10 @@ $role_labels = [
             --smoke: #e8e6e1;
             --ash:   #9a9690;
             --white: #ffffff;
+            --admin: #7c3aed;
+            --admin-dk: #6d28d9;
+            --admin-bg: #f5f3ff;
+            --admin-border: #ddd6fe;
         }
 
         body {
@@ -186,7 +204,7 @@ $role_labels = [
         /* Role picker */
         .role-grid {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(2, 1fr);
             gap: .5rem;
             margin-top: .35rem;
         }
@@ -205,6 +223,47 @@ $role_labels = [
         .role-opt:checked + label {
             border-color: var(--red); background: #fef2f2;
         }
+        /* Admin role special styling */
+        #role_admin + label {
+            border-style: dashed;
+        }
+        #role_admin:checked + label {
+            border-color: var(--admin);
+            border-style: solid;
+            background: var(--admin-bg);
+        }
+        #role_admin:checked + label .role-name { color: var(--admin); }
+
+        /* Admin code field — hidden by default, revealed via JS */
+        .admin-code-field {
+            overflow: hidden;
+            max-height: 0;
+            opacity: 0;
+            transition: max-height .3s ease, opacity .3s ease, margin .3s ease;
+            margin-bottom: 0;
+        }
+        .admin-code-field.visible {
+            max-height: 120px;
+            opacity: 1;
+            margin-bottom: 1rem;
+        }
+        .admin-code-field input:focus {
+            border-color: var(--admin) !important;
+            box-shadow: 0 0 0 3px rgba(124,58,237,.1);
+        }
+        .admin-code-banner {
+            display: flex;
+            align-items: flex-start;
+            gap: .6rem;
+            padding: .7rem .9rem;
+            background: var(--admin-bg);
+            border: 1px solid var(--admin-border);
+            border-radius: 8px;
+            font-size: .8rem;
+            color: var(--admin-dk);
+            margin-bottom: .6rem;
+        }
+        .admin-code-banner svg { flex-shrink: 0; margin-top: 1px; }
 
         .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
 
@@ -217,6 +276,10 @@ $role_labels = [
         }
         .btn-primary:hover  { background: var(--red-dk); }
         .btn-primary:active { transform: scale(.98); }
+        .btn-primary.admin-mode {
+            background: var(--admin);
+        }
+        .btn-primary.admin-mode:hover { background: var(--admin-dk); }
 
         .card-footer {
             text-align: center; padding: 1.2rem 2rem 1.5rem;
@@ -230,6 +293,18 @@ $role_labels = [
         .success-state .check { font-size: 3rem; margin-bottom: 1rem; }
         .success-state h3 { font-family: 'Syne', sans-serif; font-size: 1.3rem; font-weight: 800; color: var(--ink); margin-bottom: .5rem; }
         .success-state p { color: var(--ash); font-size: .9rem; margin-bottom: 1.5rem; }
+
+        /* Password visibility toggle */
+        .input-wrap { position: relative; }
+        .input-wrap input { padding-right: 2.8rem; }
+        .toggle-pw {
+            position: absolute; right: .85rem; top: 50%;
+            transform: translateY(-50%);
+            background: none; border: none; cursor: pointer;
+            color: var(--ash); padding: 0; line-height: 1;
+            transition: color .15s;
+        }
+        .toggle-pw:hover { color: var(--ink); }
     </style>
 </head>
 <body>
@@ -270,8 +345,9 @@ $role_labels = [
                 <div class="field">
                     <label>I am a</label>
                     <div class="role-grid">
-                        <?php foreach ($role_labels as $val => $info):
-                            $icons = ['victim'=>'🆘','responder'=>'🚒','volunteer'=>'🤝'];
+                        <?php
+                        $icons = ['victim'=>'🆘','responder'=>'🚒','volunteer'=>'🤝','admin'=>'🛡️'];
+                        foreach ($role_labels as $val => $info):
                             $checked = (($post['role'] ?? 'victim') === $val) ? 'checked' : '';
                         ?>
                         <input type="radio" class="role-opt" name="role"
@@ -282,6 +358,32 @@ $role_labels = [
                             <span class="role-desc"><?= $info['desc'] ?></span>
                         </label>
                         <?php endforeach; ?>
+                    </div>
+                </div>
+
+                <!-- Admin secret code (shown only when admin role is selected) -->
+                <div class="admin-code-field <?= (($post['role'] ?? '') === 'admin') ? 'visible' : '' ?>" id="adminCodeWrap">
+                    <div class="admin-code-banner">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                            <path d="M7 11V7a5 5 0 0110 0v4"/>
+                        </svg>
+                        Administrator access requires a secret code issued by your system administrator.
+                    </div>
+                    <div class="field" style="margin-bottom:0">
+                        <label for="admin_code">Admin Access Code</label>
+                        <div class="input-wrap">
+                            <input type="password" id="admin_code" name="admin_code"
+                                   placeholder="Enter your access code"
+                                   autocomplete="off"
+                                   value="<?= (($post['role'] ?? '') === 'admin') ? htmlspecialchars($post['admin_code'] ?? '') : '' ?>">
+                            <button type="button" class="toggle-pw" onclick="toggleCode(this)" aria-label="Show/hide code" tabindex="-1">
+                                <svg id="eyeIconCode" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                    <circle cx="12" cy="12" r="3"/>
+                                </svg>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -309,12 +411,20 @@ $role_labels = [
 
                 <div class="field">
                     <label for="password">Password</label>
-                    <input type="password" id="password" name="password"
-                           placeholder="Min. 6 characters" required>
+                    <div class="input-wrap">
+                        <input type="password" id="password" name="password"
+                               placeholder="Min. 6 characters" required>
+                        <button type="button" class="toggle-pw" onclick="togglePw(this)" aria-label="Show/hide password" tabindex="-1">
+                            <svg id="eyeIconPw" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                        </button>
+                    </div>
                     <p class="hint">At least 6 characters.</p>
                 </div>
 
-                <button type="submit" class="btn-primary">Create Account →</button>
+                <button type="submit" class="btn-primary" id="submitBtn">Create Account →</button>
             </form>
 
         <?php endif; ?>
@@ -325,6 +435,55 @@ $role_labels = [
         Already have an account? <a href="login.php">Sign in</a>
     </div>
 </div>
+
+<script>
+    const radios     = document.querySelectorAll('.role-opt');
+    const codeWrap   = document.getElementById('adminCodeWrap');
+    const submitBtn  = document.getElementById('submitBtn');
+    const codeInput  = document.getElementById('admin_code');
+
+    function syncAdminUI() {
+        const selected = document.querySelector('.role-opt:checked')?.value;
+        const isAdmin  = selected === 'admin';
+
+        codeWrap.classList.toggle('visible', isAdmin);
+        submitBtn.classList.toggle('admin-mode', isAdmin);
+        submitBtn.textContent = isAdmin ? '🛡️ Register as Administrator →' : 'Create Account →';
+
+        if (isAdmin) {
+            // Slight delay so the field is visible before focusing
+            setTimeout(() => codeInput?.focus(), 320);
+        } else {
+            if (codeInput) codeInput.value = '';
+        }
+    }
+
+    radios.forEach(r => r.addEventListener('change', syncAdminUI));
+    syncAdminUI(); // run on page load (handles PHP repopulation)
+
+    // Password visibility toggles
+    function togglePw(btn) {
+        const input = document.getElementById('password');
+        const icon  = document.getElementById('eyeIconPw');
+        toggle(input, icon);
+    }
+    function toggleCode(btn) {
+        const input = document.getElementById('admin_code');
+        const icon  = document.getElementById('eyeIconCode');
+        toggle(input, icon);
+    }
+    function toggle(input, icon) {
+        const show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        icon.innerHTML = show
+            ? `<line x1="1" y1="1" x2="23" y2="23"/>
+               <path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/>
+               <path d="M6.53 6.53A18.44 18.44 0 001 12s4 8 11 8a9.1 9.1 0 005.47-1.9"/>
+               <line x1="1" y1="1" x2="23" y2="23"/>`
+            : `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+               <circle cx="12" cy="12" r="3"/>`;
+    }
+</script>
 
 </body>
 </html>

@@ -30,7 +30,7 @@ try {
     die("Database connection failed: " . $e->getMessage());
 }
 
-// ========== HELPER FUNCTIONS ==========
+// ========== BASIC HELPER FUNCTIONS (NOT duplicated in auth.php) ==========
 
 if (!function_exists('sanitize')) {
     function sanitize($data) {
@@ -46,21 +46,12 @@ if (!function_exists('redirect')) {
 }
 
 if (!function_exists('isLoggedIn')) {
-    /**
-     * Check if user is logged in
-     * @return bool
-     */
     function isLoggedIn() {
         return isset($_SESSION['user_id']) && isset($_SESSION['role']);
     }
 }
 
 if (!function_exists('hasRole')) {
-    /**
-     * Check if logged-in user has a specific role
-     * @param string|array $role
-     * @return bool
-     */
     function hasRole($role) {
         if (!isLoggedIn()) return false;
         if (is_array($role)) {
@@ -70,27 +61,6 @@ if (!function_exists('hasRole')) {
     }
 }
 
-if (!function_exists('requireLogin')) {
-    /**
-     * Redirect to login if not authenticated
-     */
-    function requireLogin() {
-        if (!isLoggedIn()) {
-            redirect('modules/auth/login.php');
-        }
-    }
-}
-
-if (!function_exists('requireRole')) {
-    /**
-     * Redirect if user does not have required role
-     * @param string|array $role
-     */
-    function requireRole($role) {
-        requireLogin();
-        if (!hasRole($role)) {
-            redirect('index.php');
-        }
-    }
-}
+// NOTE: requireLogin() and requireRole() are defined in includes/functions/auth.php
+// Do NOT define them here to avoid redeclaration error
 ?>

@@ -9,7 +9,7 @@ if (isLoggedIn()) {
     $role = $_SESSION['role'] ?? 'victim';
     switch ($role) {
         case 'admin':     redirect('modules/admin/dashboard.php'); break;
-        case 'responder': redirect('modules/responders/dashboard.php'); break;
+        case 'responder': redirect('modules/responders/responders_dashboard.php'); break;
         case 'volunteer': redirect('modules/volunteers/my_tasks.php'); break;
         default:          redirect('modules/incidents/report.php');
     }
@@ -46,7 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             switch ($user['role']) {
                 case 'admin':     redirect('modules/admin/dashboard.php'); break;
-                case 'responder': redirect('modules/responders/dashboard.php'); break;
+                case 'responder': redirect('modules/responders/responders_dashboard.php'); break;
                 case 'volunteer': redirect('modules/volunteers/my_tasks.php'); break;
                 default:          redirect('modules/incidents/report.php');
             }
