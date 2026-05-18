@@ -59,7 +59,7 @@ $page_title = 'User Management';
 <div class="container py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1><i class="bi bi-people-fill me-2"></i>User Management</h1>
-        <a href="admin_dashboard.php" class="btn btn-outline-danger">← Back to Dashboard</a>
+        <a href="dashboard.php" class="btn btn-outline-danger">← Back to Dashboard</a>
     </div>
     
     <div class="card">

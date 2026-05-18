@@ -102,6 +102,20 @@ $stmt = $pdo->query("
 ");
 $volunteer_stats = $stmt->fetch();
 
+// ============================================
+// RESOURCE REQUEST STATISTICS (NEW)
+// ============================================
+$stmt = $pdo->query("
+    SELECT 
+        COUNT(*) as total_requests,
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_requests,
+        SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved_requests,
+        SUM(CASE WHEN status = 'in_transit' THEN 1 ELSE 0 END) as in_transit_requests,
+        SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) as delivered_requests
+    FROM resource_requests
+");
+$resource_req_stats = $stmt->fetch();
+
 // Recent Activity (last 7 days)
 $stmt = $pdo->prepare("
     SELECT 
@@ -206,6 +220,7 @@ if (($shelter_stats['total_capacity'] ?? 0) > 0) {
             --blue: #3b82f6;
             --amber: #f59e0b;
             --purple: #8b5cf6;
+            --cyan: #06b6d4;
             --text: #f1f5f9;
             --muted: #94a3b8;
         }
@@ -368,6 +383,18 @@ if (($shelter_stats['total_capacity'] ?? 0) > 0) {
             <a href="admin_dashboard.php" class="nav-pill">
                 <i class="bi bi-speedometer2 me-1"></i>Dashboard
             </a>
+            <a href="analytics.php" class="nav-pill">
+                <i class="bi bi-graph-up me-1"></i>Analytics
+            </a>
+            <a href="export.php" class="nav-pill">
+                <i class="bi bi-download me-1"></i>Export
+            </a>
+            <a href="system_logs.php" class="nav-pill">
+                <i class="bi bi-journal-bookmark-fill me-1"></i>Logs
+            </a>
+            <a href="../resources/manage.php" class="nav-pill">
+                <i class="bi bi-box-seam me-1"></i>Resources
+            </a>
             <a href="../mapping/map.php" class="nav-pill">
                 <i class="bi bi-map me-1"></i>Live Map
             </a>
@@ -382,8 +409,7 @@ if (($shelter_stats['total_capacity'] ?? 0) > 0) {
             </a>
             <a href="../auth/logout.php" class="nav-pill danger"
                onclick="return confirm('Logout?');">
-                <i class="bi bi-box-arrow-right me-1"></i>Logout
-            </a>
+                <i class="bi bi-box-arrow-right me-1"></i>Logout            </a>
         </div>
     </div>
 </nav>
@@ -506,11 +532,11 @@ if (($shelter_stats['total_capacity'] ?? 0) > 0) {
             <div class="stat-card">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
-                        <div class="stat-number"><?= number_format($user_stats['responders'] ?? 0) ?></div>
-                        <p class="stat-label">Responders</p>
+                        <div class="stat-number"><?= number_format($resource_req_stats['pending_requests'] ?? 0) ?></div>
+                        <p class="stat-label">Pending Aid</p>
                     </div>
-                    <div class="stat-icon" style="background: rgba(239,68,68,0.15);">
-                        <i class="bi bi-shield-fill" style="color: var(--red);"></i>
+                    <div class="stat-icon" style="background: rgba(245,158,11,0.15);">
+                        <i class="bi bi-box-seam" style="color: var(--amber);"></i>
                     </div>
                 </div>
             </div>
@@ -536,11 +562,11 @@ if (($shelter_stats['total_capacity'] ?? 0) > 0) {
             <div class="stat-card">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
-                        <div class="stat-number"><?= number_format($volunteer_stats['total_volunteers'] ?? 0) ?></div>
-                        <p class="stat-label">Total Volunteers</p>
+                        <div class="stat-number"><?= number_format($user_stats['responders'] ?? 0) ?></div>
+                        <p class="stat-label">Responders</p>
                     </div>
-                    <div class="stat-icon" style="background: rgba(59,130,246,0.15);">
-                        <i class="bi bi-person-heart" style="color: var(--blue);"></i>
+                    <div class="stat-icon" style="background: rgba(239,68,68,0.15);">
+                        <i class="bi bi-shield-fill" style="color: var(--red);"></i>
                     </div>
                 </div>
             </div>
@@ -553,7 +579,7 @@ if (($shelter_stats['total_capacity'] ?? 0) > 0) {
                         <p class="stat-label">Available Volunteers</p>
                     </div>
                     <div class="stat-icon" style="background: rgba(34,197,94,0.15);">
-                        <i class="bi bi-check-circle-fill" style="color: var(--green);"></i>
+                        <i class="bi bi-person-heart" style="color: var(--green);"></i>
                     </div>
                 </div>
             </div>
@@ -691,39 +717,49 @@ if (($shelter_stats['total_capacity'] ?? 0) > 0) {
                 </div>
                 <div class="card-body p-3">
                     <div class="row g-2">
-                        <div class="col-6">
+                        <div class="col-4">
                             <a href="../incidents/pending.php" class="btn-action d-block text-center">
-                                <i class="bi bi-check2-circle me-1"></i> Verify Incidents
+                                <i class="bi bi-check2-circle me-1"></i> Verify
                             </a>
                         </div>
-                        <div class="col-6">
-                            <a href="users.php" class="btn-action d-block text-center">
-                                <i class="bi bi-person-plus me-1"></i> Manage Users
-                            </a>
-                        </div>
-                        <div class="col-6">
-                            <a href="../mapping/danger_zones.php" class="btn-action d-block text-center">
-                                <i class="bi bi-exclamation-triangle me-1"></i> Danger Zones
-                            </a>
-                        </div>
-                        <div class="col-6">
-                            <a href="../mapping/shelters.php" class="btn-action d-block text-center">
-                                <i class="bi bi-building me-1"></i> Safe Shelters
-                            </a>
-                        </div>
-                        <div class="col-6">
-                            <a href="../mapping/map.php" class="btn-action d-block text-center">
-                                <i class="bi bi-map me-1"></i> Live Map
-                            </a>
-                        </div>
-                        <div class="col-6">
-                            <a href="../alerts/broadcast.php" class="btn-action d-block text-center">
-                                <i class="bi bi-megaphone me-1"></i> Broadcast Alert
-                            </a>
-                        </div>
-                        <div class="col-12 mt-2">
+                        <div class="col-4">
                             <a href="../resources/manage.php" class="btn-action d-block text-center">
-                                <i class="bi bi-box-seam me-1"></i> Manage Resources
+                                <i class="bi bi-box-seam me-1"></i> Aid
+                            </a>
+                        </div>
+                        <div class="col-4">
+                            <a href="users.php" class="btn-action d-block text-center">
+                                <i class="bi bi-people me-1"></i> Users
+                            </a>
+                        </div>
+                        <div class="col-4">
+                            <a href="analytics.php" class="btn-action d-block text-center">
+                                <i class="bi bi-graph-up me-1"></i> Analytics
+                            </a>
+                        </div>
+                        <div class="col-4">
+                            <a href="export.php" class="btn-action d-block text-center">
+                                <i class="bi bi-download me-1"></i> Export
+                            </a>
+                        </div>
+                        <div class="col-4">
+                            <a href="system_logs.php" class="btn-action d-block text-center">
+                                <i class="bi bi-journal-bookmark me-1"></i> Logs
+                            </a>
+                        </div>
+                        <div class="col-4">
+                            <a href="../mapping/danger_zones.php" class="btn-action d-block text-center">
+                                <i class="bi bi-exclamation-triangle me-1"></i> Zones
+                            </a>
+                        </div>
+                        <div class="col-4">
+                            <a href="../mapping/shelters.php" class="btn-action d-block text-center">
+                                <i class="bi bi-building me-1"></i> Shelters
+                            </a>
+                        </div>
+                        <div class="col-4">
+                            <a href="../mapping/map.php" class="btn-action d-block text-center">
+                                <i class="bi bi-map me-1"></i> Map
                             </a>
                         </div>
                     </div>
@@ -760,14 +796,14 @@ if (($shelter_stats['total_capacity'] ?? 0) > 0) {
                                         <span class="badge bg-<?= $user['role'] == 'admin' ? 'danger' : ($user['role'] == 'responder' ? 'warning' : 'secondary') ?>">
                                             <?= ucfirst($user['role']) ?>
                                         </span>
-                                     </td>
+                                    </td>
                                     <td>
                                         <span class="badge bg-<?= $user['is_active'] ? 'success' : 'secondary' ?>">
                                             <?= $user['is_active'] ? 'Active' : 'Inactive' ?>
                                         </span>
-                                     </td>
+                                    </td>
                                     <td><?= date('M j, Y', strtotime($user['created_at'])) ?></td>
-                                 </tr>
+                                </tr>
                             <?php endforeach; ?>
                         </tbody>
                     </table>

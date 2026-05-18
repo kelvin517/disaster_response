@@ -62,6 +62,43 @@ $stmt = $pdo->prepare("SELECT COUNT(*) as count FROM field_updates WHERE created
 $stmt->execute();
 $recent_updates_count = $stmt->fetch()['count'];
 
+// ============================================
+// RESOURCE REQUEST STATISTICS (NEW)
+// ============================================
+
+// Pending resource requests count
+$stmt = $pdo->prepare("SELECT COUNT(*) as count FROM resource_requests WHERE status = 'pending'");
+$stmt->execute();
+$pending_resources = $stmt->fetch()['count'];
+
+// Low stock alerts (resources with quantity < 100)
+$stmt = $pdo->prepare("
+    SELECT COUNT(*) as count 
+    FROM resources 
+    WHERE status = 'available' AND quantity < 100
+");
+$stmt->execute();
+$low_stock_alerts = $stmt->fetch()['count'];
+
+// Recent pending resource requests
+$stmt = $pdo->prepare("
+    SELECT rr.*, u.full_name as requester_name
+    FROM resource_requests rr
+    JOIN users u ON rr.user_id = u.id
+    WHERE rr.status = 'pending'
+    ORDER BY 
+        CASE rr.urgency 
+            WHEN 'critical' THEN 1 
+            WHEN 'high' THEN 2 
+            WHEN 'medium' THEN 3 
+            ELSE 4 
+        END ASC,
+        rr.requested_at ASC
+    LIMIT 5
+");
+$stmt->execute();
+$recent_requests = $stmt->fetchAll();
+
 // Recent pending incidents (for quick verification)
 $stmt = $pdo->prepare("
     SELECT i.*, u.full_name as reporter_name 
@@ -134,6 +171,19 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute();
 $recent_field_updates = $stmt->fetchAll();
+
+$urgency_colors = [
+    'critical' => '#dc3545',
+    'high' => '#fd7e14',
+    'medium' => '#ffc107',
+    'low' => '#28a745'
+];
+
+$resource_types = [
+    'food' => '🍲 Food', 'water' => '💧 Water', 'medicine' => '💊 Medicine',
+    'shelter' => '🏠 Shelter', 'clothing' => '👕 Clothing', 'blankets' => '🛏️ Blankets',
+    'first_aid' => '🩹 First Aid', 'transport' => '🚛 Transport', 'other' => '📦 Other'
+];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -432,12 +482,6 @@ $recent_field_updates = $stmt->fetchAll();
     .stat-green::after { background: var(--green); }
     .stat-cyan::after  { background: #06b6d4; }
 
-    .stat-card:nth-child(1) { animation-delay: .04s; }
-    .stat-card:nth-child(2) { animation-delay: .09s; }
-    .stat-card:nth-child(3) { animation-delay: .14s; }
-    .stat-card:nth-child(4) { animation-delay: .19s; }
-    .stat-card:nth-child(5) { animation-delay: .24s; }
-
     .dashboard-card {
         background: var(--surface);
         border: 1px solid var(--border);
@@ -492,16 +536,16 @@ $recent_field_updates = $stmt->fetchAll();
         border-color: var(--red);
     }
 
-    .incident-item {
+    .incident-item, .request-item {
         padding: .95rem 1.3rem;
         border-bottom: 1px solid var(--border);
         transition: background var(--ease);
         cursor: pointer;
     }
-    .incident-item:last-child { border-bottom: none; }
-    .incident-item:hover { background: var(--surface-2); }
+    .incident-item:last-child, .request-item:last-child { border-bottom: none; }
+    .incident-item:hover, .request-item:hover { background: var(--surface-2); }
 
-    .incident-item h6 {
+    .request-item h6, .incident-item h6 {
         font-family: var(--ff-body);
         font-weight: 600;
         font-size: .875rem;
@@ -509,13 +553,13 @@ $recent_field_updates = $stmt->fetchAll();
         margin-bottom: .25rem;
         display: flex; align-items: center; gap: .35rem;
     }
-    .incident-item .meta {
+    .meta {
         font-size: .72rem;
         color: var(--muted-2);
         font-family: var(--ff-mono);
         letter-spacing: .01em;
     }
-    .incident-item .desc {
+    .desc {
         font-size: .8rem;
         color: var(--muted-2);
         margin-top: .35rem;
@@ -691,6 +735,9 @@ $recent_field_updates = $stmt->fetchAll();
             <a href="updates.php" class="nav-pill">
                 <i class="bi bi-chat-dots me-1"></i>Updates
             </a>
+            <a href="../resources/manage.php" class="nav-pill">
+                <i class="bi bi-box-seam me-1"></i>Resources
+            </a>
             <a href="../incidents/pending.php" class="nav-pill" style="position:relative;">
                 <i class="bi bi-clock-history me-1"></i>Pending
                 <?php if ($pending_count > 0): ?>
@@ -735,7 +782,7 @@ $recent_field_updates = $stmt->fetchAll();
         </div>
     </div>
 
-    <!-- ── Stat Cards (5 columns) ──────────────────────────── -->
+    <!-- ── Stat Cards (7 columns) ──────────────────────────── -->
     <div class="row">
         <div class="col-md-2 col-6">
             <div class="stat-card stat-red">
@@ -782,6 +829,17 @@ $recent_field_updates = $stmt->fetchAll();
             </div>
         </div>
         <div class="col-md-2 col-6">
+            <div class="stat-card stat-amber">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="stat-number"><?php echo $pending_resources; ?></div>
+                        <p class="stat-label">Aid Requests</p>
+                    </div>
+                    <div class="stat-icon icon-amber"><i class="bi bi-box-seam"></i></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2 col-6">
             <div class="stat-card stat-green">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
@@ -817,13 +875,13 @@ $recent_field_updates = $stmt->fetchAll();
                 </div>
                 <div class="p-3">
                     <div class="row g-3">
-                        <div class="col-md-2 col-6">
+                        <div class="col-md-2 col-4">
                             <a href="../mapping/map.php" class="quick-action-btn">
                                 <i class="bi bi-map"></i>
                                 <span>Live Map</span>
                             </a>
                         </div>
-                        <div class="col-md-2 col-6">
+                        <div class="col-md-2 col-4">
                             <a href="../incidents/pending.php" class="quick-action-btn">
                                 <i class="bi bi-check2-circle"></i>
                                 <span>Verify</span>
@@ -834,28 +892,33 @@ $recent_field_updates = $stmt->fetchAll();
                                 <?php endif; ?>
                             </a>
                         </div>
-                        <div class="col-md-2 col-6">
+                        <div class="col-md-2 col-4">
+                            <a href="../resources/manage.php" class="quick-action-btn">
+                                <i class="bi bi-box-seam"></i>
+                                <span>Aid Requests</span>
+                                <?php if ($pending_resources > 0): ?>
+                                    <span class="pending-badge" style="position:static;display:inline-block;margin-left:4px;">
+                                        <?php echo $pending_resources; ?>
+                                    </span>
+                                <?php endif; ?>
+                            </a>
+                        </div>
+                        <div class="col-md-2 col-4">
                             <a href="team.php" class="quick-action-btn">
                                 <i class="bi bi-people"></i>
                                 <span>Team</span>
                             </a>
                         </div>
-                        <div class="col-md-2 col-6">
+                        <div class="col-md-2 col-4">
                             <a href="updates.php" class="quick-action-btn">
                                 <i class="bi bi-chat-dots"></i>
                                 <span>Field Updates</span>
                             </a>
                         </div>
-                        <div class="col-md-2 col-6">
+                        <div class="col-md-2 col-4">
                             <a href="../alerts/broadcast.php" class="quick-action-btn">
                                 <i class="bi bi-megaphone"></i>
                                 <span>Alert</span>
-                            </a>
-                        </div>
-                        <div class="col-md-2 col-6">
-                            <a href="../messaging/inbox.php" class="quick-action-btn">
-                                <i class="bi bi-envelope"></i>
-                                <span>Messages</span>
                             </a>
                         </div>
                     </div>
@@ -864,11 +927,59 @@ $recent_field_updates = $stmt->fetchAll();
         </div>
     </div>
 
-    <!-- ── Pending Verification + Chart + Activity ───────────── -->
     <div class="row">
 
-        <!-- Pending incidents -->
-        <div class="col-lg-7">
+        <!-- Pending Resource Requests (NEW SECTION) -->
+        <div class="col-lg-6">
+            <div class="dashboard-card">
+                <div class="card-header-custom">
+                    <div class="hd-left">
+                        <span class="hd-icon-wrap hd-amber"><i class="bi bi-box-seam"></i></span>
+                        Pending Aid Requests
+                    </div>
+                    <a href="../resources/manage.php" class="view-all">View All →</a>
+                </div>
+                <div>
+                    <?php if (count($recent_requests) > 0): ?>
+                        <?php foreach ($recent_requests as $req): ?>
+                            <div class="request-item" onclick="window.location.href='../resources/manage.php'">
+                                <div class="d-flex justify-content-between align-items-start gap-2">
+                                    <div style="flex:1;min-width:0;">
+                                        <h6>
+                                            <i class="bi bi-person-circle"></i>
+                                            <?php echo htmlspecialchars($req['requester_name']); ?>
+                                            <span class="badge ms-2" style="background: <?php echo $urgency_colors[$req['urgency']] ?>;">
+                                                <?php echo strtoupper($req['urgency']); ?>
+                                            </span>
+                                        </h6>
+                                        <div class="meta">
+                                            <?php echo $resource_types[$req['resource_type']] ?? $req['resource_type']; ?> • 
+                                            Quantity: <?php echo number_format($req['quantity']); ?> • 
+                                            <?php echo date('M j, H:i', strtotime($req['requested_at'])); ?>
+                                        </div>
+                                        <p class="desc">📍 <?php echo htmlspecialchars($req['location_name'] ?? 'Location provided'); ?></p>
+                                    </div>
+                                    <div class="text-end flex-shrink-0">
+                                        <a href="../resources/fulfill.php?id=<?php echo $req['id']; ?>&action=approve" 
+                                           class="btn-verify-sm" onclick="event.stopPropagation()">
+                                            <i class="bi bi-check2-circle"></i> Approve
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <div class="empty-state">
+                            <i class="bi bi-check-circle-fill" style="color:var(--green)"></i>
+                            <p>No pending aid requests.</p>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pending incidents for verification -->
+        <div class="col-lg-6">
             <div class="dashboard-card">
                 <div class="card-header-custom">
                     <div class="hd-left">
@@ -919,10 +1030,11 @@ $recent_field_updates = $stmt->fetchAll();
                 </div>
             </div>
         </div>
+    </div>
 
+    <div class="row">
+        <!-- Severity chart -->
         <div class="col-lg-5">
-
-            <!-- Severity chart -->
             <div class="dashboard-card">
                 <div class="card-header-custom">
                     <div class="hd-left">
@@ -934,8 +1046,10 @@ $recent_field_updates = $stmt->fetchAll();
                     <canvas id="severityChart" height="200"></canvas>
                 </div>
             </div>
+        </div>
 
-            <!-- Recent Field Updates Feed -->
+        <!-- Recent Field Updates Feed -->
+        <div class="col-lg-7">
             <div class="dashboard-card">
                 <div class="card-header-custom">
                     <div class="hd-left">
@@ -982,7 +1096,6 @@ $recent_field_updates = $stmt->fetchAll();
                     <?php endif; ?>
                 </div>
             </div>
-
         </div>
     </div>
 
