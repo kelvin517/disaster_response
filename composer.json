@@ -1,0 +1,34 @@
+{
+    "name": "disasterresponse/system",
+    "description": "Disaster Response & Resource Coordination System",
+    "type": "project",
+    "require": {
+        "php": ">=7.4",
+        "ext-pdo": "*",
+        "ext-json": "*",
+        "ext-curl": "*",
+        "phpmailer/phpmailer": "^6.8",
+        "africastalking/africastalking": "^3.0",
+        "firebase/php-jwt": "^6.0",
+        "tecnickcom/tcpdf": "^6.6",
+        "phpoffice/phpspreadsheet": "^1.29"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "DisasterResponse\\": "src/"
+        }
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true
+    },
+    "scripts": {
+        "post-install-cmd": [
+            "chmod -R 755 temp/uploads/",
+            "chmod -R 755 logs/"
+        ]
+    }
+}

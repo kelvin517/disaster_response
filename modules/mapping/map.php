@@ -2,88 +2,45 @@
 /**
  * Live Incident Map Module
  * Disaster Response & Resource Coordination System
- * Author: Kevin Kiplangat | INTE/MK/1299/09/23
- *
- * Renders an interactive Leaflet.js map for responders/admins showing
- * all open incidents colour-coded by severity with click-through details.
- *
- * Endpoints served by this file:
- *   GET  map.php                  → full page (HTML)
- *   GET  map.php?action=feed      → JSON incident feed (AJAX polling)
- *   GET  map.php?action=detail&id → JSON single-incident detail (AJAX)
- *   GET  map.php?action=zones     → JSON danger zones (AJAX)
- *   GET  map.php?action=shelters  → JSON safe shelters (AJAX)
  */
 
 session_start();
 require_once __DIR__ . '/../../includes/config/config.php';
 require_once __DIR__ . '/../../includes/functions/auth.php';
 
-// Only responders, admins, and volunteers can view the command map
 role_guard(['responder', 'admin', 'volunteer']);
 
-/* ═══════════════════════════════════════════════════════════════
-   AJAX — JSON feed endpoints
-═══════════════════════════════════════════════════════════════ */
 $action = $_GET['action'] ?? '';
 
 if ($action === 'feed') {
-    /**
-     * Returns all non-resolved incidents as GeoJSON FeatureCollection.
-     * Clients poll this every 30 s for real-time updates.
-     */
     header('Content-Type: application/json');
     header('Cache-Control: no-store');
-
     try {
         $stmt = $pdo->prepare("
-            SELECT
-                i.id,
-                i.incident_type,
-                i.severity,
-                i.description,
-                i.latitude,
-                i.longitude,
-                i.status,
-                i.photo_path,
-                i.reported_at,
-                COALESCE(u.full_name, 'Anonymous') AS reporter_name
+            SELECT i.id, i.incident_type, i.severity, i.description,
+                   i.latitude, i.longitude, i.status, i.photo_path, i.reported_at,
+                   COALESCE(u.full_name, 'Anonymous') AS reporter_name
             FROM   incidents i
             LEFT   JOIN users u ON u.id = i.reporter_id
-            WHERE  i.status NOT IN ('resolved', 'cancelled', 'rejected')
+            WHERE  i.status NOT IN ('resolved','cancelled','rejected')
             ORDER  BY i.severity DESC, i.reported_at DESC
         ");
         $stmt->execute();
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
         $features = [];
         foreach ($rows as $r) {
             $features[] = [
-                'type'       => 'Feature',
-                'geometry'   => [
-                    'type'        => 'Point',
-                    'coordinates' => [(float)$r['longitude'], (float)$r['latitude']],
-                ],
+                'type'     => 'Feature',
+                'geometry' => ['type' => 'Point', 'coordinates' => [(float)$r['longitude'], (float)$r['latitude']]],
                 'properties' => [
-                    'id'            => (int)$r['id'],
-                    'type'          => $r['incident_type'],
-                    'severity'      => (int)$r['severity'],
-                    'status'        => $r['status'],
-                    'description'   => $r['description'],
-                    'reporter'      => $r['reporter_name'],
-                    'photo'         => $r['photo_path'],
-                    'reported_at'   => $r['reported_at'],
+                    'id' => (int)$r['id'], 'type' => $r['incident_type'],
+                    'severity' => (int)$r['severity'], 'status' => $r['status'],
+                    'description' => $r['description'], 'reporter' => $r['reporter_name'],
+                    'photo' => $r['photo_path'], 'reported_at' => $r['reported_at'],
                 ],
             ];
         }
-
-        echo json_encode([
-            'type'       => 'FeatureCollection',
-            'features'   => $features,
-            'generated'  => date('c'),
-            'total'      => count($features),
-        ]);
-
+        echo json_encode(['type' => 'FeatureCollection', 'features' => $features, 'generated' => date('c'), 'total' => count($features)]);
     } catch (PDOException $e) {
         error_log('Map feed error: ' . $e->getMessage());
         http_response_code(500);
@@ -93,832 +50,788 @@ if ($action === 'feed') {
 }
 
 if ($action === 'detail') {
-    /**
-     * Returns full detail for a single incident (used by the sidebar panel).
-     */
     header('Content-Type: application/json');
     $id = (int)($_GET['id'] ?? 0);
-
     try {
         $stmt = $pdo->prepare("
-            SELECT
-                i.*,
-                COALESCE(u.full_name, 'Anonymous')    AS reporter_name,
-                COALESCE(u.phone, 'N/A')          AS reporter_phone,
-                COALESCE(r.full_name, 'Unassigned')   AS responder_name
+            SELECT i.*, COALESCE(u.full_name,'Anonymous') AS reporter_name,
+                   COALESCE(u.phone,'N/A') AS reporter_phone,
+                   COALESCE(r.full_name,'Unassigned') AS responder_name
             FROM   incidents i
             LEFT   JOIN users u ON u.id = i.reporter_id
             LEFT   JOIN users r ON r.id = i.assigned_to
-            WHERE  i.id = :id
-            LIMIT  1
+            WHERE  i.id = :id LIMIT 1
         ");
         $stmt->execute([':id' => $id]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
-
         if (!$row) { http_response_code(404); echo json_encode(['error' => 'Not found']); exit; }
-
         echo json_encode($row);
-
     } catch (PDOException $e) {
-        error_log('Incident detail error: ' . $e->getMessage());
-        http_response_code(500);
-        echo json_encode(['error' => 'Database error']);
+        http_response_code(500); echo json_encode(['error' => 'Database error']);
     }
     exit;
 }
 
 if ($action === 'zones') {
-    /**
-     * Returns all active danger zones as GeoJSON FeatureCollection.
-     */
     header('Content-Type: application/json');
     header('Cache-Control: no-store');
-
     try {
-        $stmt = $pdo->prepare("
-            SELECT id, name, description, hazard_level, geometry, status
-            FROM danger_zones
-            WHERE status = 'active'
-        ");
+        $stmt = $pdo->prepare("SELECT id, name, description, hazard_level, geometry, status FROM danger_zones WHERE status = 'active'");
         $stmt->execute();
         $zones = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
+        $hazard_colors = ['critical' => '#E8271A', 'high' => '#D97706', 'medium' => '#CA8A04', 'low' => '#16A34A'];
         $features = [];
-        $hazard_colors = [
-            'critical' => '#dc3545',
-            'high' => '#fd7e14',
-            'medium' => '#ffc107',
-            'low' => '#28a745'
-        ];
-
         foreach ($zones as $zone) {
             $geometry = json_decode($zone['geometry'], true);
             if ($geometry) {
-                $features[] = [
-                    'type'       => 'Feature',
-                    'geometry'   => $geometry,
-                    'properties' => [
-                        'id' => $zone['id'],
-                        'name' => $zone['name'],
-                        'description' => $zone['description'],
-                        'hazard_level' => $zone['hazard_level'],
-                        'color' => $hazard_colors[$zone['hazard_level']] ?? '#dc3545',
-                        'status' => $zone['status']
-                    ]
-                ];
+                $features[] = ['type' => 'Feature', 'geometry' => $geometry, 'properties' => [
+                    'id' => $zone['id'], 'name' => $zone['name'], 'description' => $zone['description'],
+                    'hazard_level' => $zone['hazard_level'], 'color' => $hazard_colors[$zone['hazard_level']] ?? '#E8271A',
+                ]];
             }
         }
-
-        echo json_encode([
-            'type' => 'FeatureCollection',
-            'features' => $features,
-            'total' => count($features)
-        ]);
-
-    } catch (PDOException $e) {
-        error_log('Danger zones error: ' . $e->getMessage());
-        http_response_code(500);
-        echo json_encode(['error' => 'Database error']);
-    }
+        echo json_encode(['type' => 'FeatureCollection', 'features' => $features, 'total' => count($features)]);
+    } catch (PDOException $e) { http_response_code(500); echo json_encode(['error' => 'Database error']); }
     exit;
 }
 
 if ($action === 'shelters') {
-    /**
-     * Returns all active safe shelters as GeoJSON FeatureCollection.
-     */
     header('Content-Type: application/json');
     header('Cache-Control: no-store');
-
     try {
-        $stmt = $pdo->prepare("
-            SELECT id, name, type, capacity, current_occupancy, 
-                   latitude, longitude, address, contact_phone, resources, status
-            FROM shelters
-            WHERE status = 'active'
-        ");
+        $stmt = $pdo->prepare("SELECT id, name, type, capacity, current_occupancy, latitude, longitude, address, contact_phone, resources, status FROM shelters WHERE status = 'active'");
         $stmt->execute();
         $shelters = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
         $features = [];
-        $shelter_icons = [
-            'school' => '🏫',
-            'church' => '⛪',
-            'community' => '🏛️',
-            'government' => '🏢',
-            'stadium' => '🏟️',
-            'tent' => '⛺',
-            'other' => '🏠'
-        ];
-
-        foreach ($shelters as $shelter) {
-            $features[] = [
-                'type'       => 'Feature',
-                'geometry'   => [
-                    'type' => 'Point',
-                    'coordinates' => [(float)$shelter['longitude'], (float)$shelter['latitude']]
-                ],
-                'properties' => [
-                    'id' => $shelter['id'],
-                    'name' => $shelter['name'],
-                    'type' => $shelter['type'],
-                    'type_icon' => $shelter_icons[$shelter['type']] ?? '🏠',
-                    'capacity' => (int)$shelter['capacity'],
-                    'current_occupancy' => (int)$shelter['current_occupancy'],
-                    'address' => $shelter['address'],
-                    'contact_phone' => $shelter['contact_phone'],
-                    'resources' => $shelter['resources'],
-                    'status' => $shelter['status']
-                ]
+        foreach ($shelters as $s) {
+            $features[] = ['type' => 'Feature',
+                'geometry' => ['type' => 'Point', 'coordinates' => [(float)$s['longitude'], (float)$s['latitude']]],
+                'properties' => array_merge($s, ['capacity' => (int)$s['capacity'], 'current_occupancy' => (int)$s['current_occupancy']])
             ];
         }
-
-        echo json_encode([
-            'type' => 'FeatureCollection',
-            'features' => $features,
-            'total' => count($features)
-        ]);
-
-    } catch (PDOException $e) {
-        error_log('Shelters error: ' . $e->getMessage());
-        http_response_code(500);
-        echo json_encode(['error' => 'Database error']);
-    }
+        echo json_encode(['type' => 'FeatureCollection', 'features' => $features, 'total' => count($features)]);
+    } catch (PDOException $e) { http_response_code(500); echo json_encode(['error' => 'Database error']); }
     exit;
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   Full-page render
-═══════════════════════════════════════════════════════════════ */
-
-// Severity metadata (mirrors report.php — keep in sync)
+/* ─── Full page render ─── */
 $severity_meta = [
-    1 => ['label' => 'Low',      'color' => '#28a745', 'border' => '#1e7e34'],
-    2 => ['label' => 'Medium',   'color' => '#ffc107', 'border' => '#e0a800'],
-    3 => ['label' => 'High',     'color' => '#fd7e14', 'border' => '#e96b02'],
-    4 => ['label' => 'Critical', 'color' => '#dc3545', 'border' => '#bd2130'],
+    1 => ['label' => 'Low',      'color' => '#16A34A', 'border' => '#15803D'],
+    2 => ['label' => 'Medium',   'color' => '#CA8A04', 'border' => '#A16207'],
+    3 => ['label' => 'High',     'color' => '#D97706', 'border' => '#B45309'],
+    4 => ['label' => 'Critical', 'color' => '#E8271A', 'border' => '#B91C1C'],
 ];
-
 $incident_type_icons = [
-    'flood'            => '🌊',
-    'fire'             => '🔥',
-    'earthquake'       => '🏚️',
-    'landslide'        => '⛰️',
-    'drought'          => '☀️',
-    'accident'         => '🚗',
-    'building_collapse'=> '🏗️',
-    'disease_outbreak' => '🦠',
-    'other'            => '⚠️',
+    'flood'             => '🌊',
+    'fire'              => '🔥',
+    'earthquake'        => '🏚️',
+    'landslide'         => '⛰️',
+    'drought'           => '☀️',
+    'accident'          => '🚗',
+    'building_collapse' => '🏗️',
+    'disease_outbreak'  => '🦠',
+    'other'             => '⚠️',
 ];
-
-// Summary counts for the legend panel
 try {
-    $counts = $pdo->query("
-        SELECT severity, COUNT(*) AS cnt
-        FROM   incidents
-        WHERE  status NOT IN ('resolved', 'cancelled', 'rejected')
-        GROUP  BY severity
-    ")->fetchAll(PDO::FETCH_KEY_PAIR);
-} catch (PDOException $e) {
-    $counts = [];
-}
+    $counts = $pdo->query("SELECT severity, COUNT(*) AS cnt FROM incidents WHERE status NOT IN ('resolved','cancelled','rejected') GROUP BY severity")->fetchAll(PDO::FETCH_KEY_PAIR);
+} catch (PDOException $e) { $counts = []; }
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live Incident Map - DisasterResponse</title>
-    
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <title>Live Incident Map — DisasterResponse</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css">
-    
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Inter', sans-serif; overflow: hidden; background: #0f172a; }
+        :root {
+            --black: #080808;
+            --surface: #111111;
+            --card: #161616;
+            --card2: #1C1C1C;
+            --border: rgba(255,255,255,0.07);
+            --border-hover: rgba(255,255,255,0.13);
+            --red: #E8271A;
+            --red-dim: rgba(232,39,26,0.1);
+            --red-border: rgba(232,39,26,0.28);
+            --green: #16A34A;
+            --green-dim: rgba(22,163,74,0.1);
+            --green-border: rgba(22,163,74,0.25);
+            --amber: #D97706;
+            --amber-dim: rgba(217,119,6,0.1);
+            --text: #F0EDE8;
+            --muted: #6B6865;
+            --muted2: #9A9693;
+            --heading: 'Bebas Neue', sans-serif;
+            --body: 'DM Sans', sans-serif;
+            --mono: 'DM Mono', monospace;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: var(--body); background: var(--black); color: var(--text); overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+        ::-webkit-scrollbar { width: 3px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--red); border-radius: 2px; }
 
-        /* Navbar */
-        .navbar-modern {
-            background: rgba(15,23,42,0.95);
-            backdrop-filter: blur(12px);
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-            padding: 0.7rem 0;
+        /* ─── NAV ─── */
+        .nav {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 24px;
+            background: rgba(8,8,8,0.97);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
             z-index: 1000;
-            position: relative;
         }
-        .navbar-brand {
-            font-weight: 800;
-            font-size: 1.25rem;
-            color: white !important;
-            text-decoration: none;
+        .nav-brand {
+            font-family: var(--heading);
+            font-size: 1.4rem; letter-spacing: 0.06em;
+            color: var(--red); text-decoration: none;
+            display: flex; align-items: center; gap: 8px;
         }
-        .navbar-brand .brand-accent { color: #ef4444; }
+        .nav-brand span { color: var(--text); }
+        .live-badge {
+            display: inline-flex; align-items: center; gap: 5px;
+            font-family: var(--mono);
+            font-size: 0.6rem; letter-spacing: 0.15em; text-transform: uppercase;
+            background: var(--red-dim); border: 1px solid var(--red-border);
+            color: #F87171; padding: 3px 10px; border-radius: 100px;
+        }
+        .live-dot { width: 5px; height: 5px; background: var(--red); border-radius: 50%; animation: blink 1.4s infinite; }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+        .nav-right { display: flex; align-items: center; gap: 6px; }
+        .nav-btn {
+            font-size: 0.72rem; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase;
+            color: var(--muted); text-decoration: none;
+            padding: 7px 14px; border-radius: 6px;
+            border: 1px solid transparent;
+            transition: all 0.18s;
+        }
+        .nav-btn:hover { color: var(--text); border-color: var(--border); background: var(--card); }
+        .nav-btn.red { color: var(--red); border-color: var(--red-border); background: var(--red-dim); }
+        .nav-btn.red:hover { background: rgba(232,39,26,0.18); }
 
+        /* ─── MAP WRAPPER ─── */
         #mapWrapper {
             display: flex;
-            height: calc(100vh - 60px);
+            flex: 1;
+            overflow: hidden;
             position: relative;
         }
 
-        /* Sidebar */
+        /* ─── SIDEBAR ─── */
         #sidebar {
-            width: 360px;
-            min-width: 280px;
-            background: #1e293b;
-            border-right: 1px solid rgba(255,255,255,0.1);
+            width: 320px;
+            min-width: 320px;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
             display: flex;
             flex-direction: column;
             z-index: 800;
-            transition: transform 0.25s ease;
+            transition: transform 0.25s ease, min-width 0.25s ease, width 0.25s ease;
         }
-        #sidebar.collapsed { transform: translateX(-100%); position: absolute; top: 0; bottom: 0; left: 0; }
+        #sidebar.collapsed {
+            transform: translateX(-100%);
+            position: absolute;
+            top: 0; left: 0; bottom: 0;
+            min-width: 320px;
+        }
+
+        .sidebar-head {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 14px 16px;
+            background: var(--card2);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+        .sidebar-head-title {
+            font-family: var(--mono);
+            font-size: 0.63rem; letter-spacing: 0.18em; text-transform: uppercase;
+            color: var(--muted2);
+            display: flex; align-items: center; gap: 8px;
+        }
+        .sidebar-head-title i { color: var(--red); }
+        .inc-count {
+            font-family: var(--heading);
+            font-size: 1.4rem; letter-spacing: 0.04em; line-height: 1;
+            color: var(--red);
+        }
+
+        .filter-row {
+            display: flex; gap: 8px;
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+        .filter-select {
+            flex: 1;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            padding: 7px 10px;
+            font-family: var(--body);
+            font-size: 0.75rem;
+            color: var(--muted2);
+            outline: none;
+            -webkit-appearance: none;
+            cursor: pointer;
+            transition: border-color 0.18s;
+        }
+        .filter-select:focus { border-color: var(--red-border); color: var(--text); }
+
+        #incidentList { overflow-y: auto; flex: 1; }
+
+        .inc-item {
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border);
+            border-left: 3px solid transparent;
+            cursor: pointer;
+            transition: background 0.15s, border-left-color 0.15s;
+        }
+        .inc-item:hover { background: var(--card2); }
+        .inc-item.active { background: var(--red-dim); border-left-color: var(--red); }
+
+        .inc-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 5px; }
+        .inc-title { font-size: 0.85rem; font-weight: 600; line-height: 1.35; }
+        .sev-pip {
+            font-family: var(--mono);
+            font-size: 0.58rem; letter-spacing: 0.1em; text-transform: uppercase;
+            padding: 3px 8px; border-radius: 100px; border: 1px solid;
+            white-space: nowrap; flex-shrink: 0;
+        }
+        .inc-desc { font-size: 0.77rem; color: var(--muted2); line-height: 1.5; margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .inc-meta { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 0.62rem; color: var(--muted); }
+        .status-pip {
+            display: inline-block;
+            padding: 2px 7px; border-radius: 100px;
+            font-size: 0.58rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+            background: var(--card2); color: var(--muted2); border: 1px solid var(--border);
+        }
+
+        #listEmpty { padding: 40px 16px; text-align: center; color: var(--muted); font-size: 0.82rem; display: none; }
+        #listEmpty i { font-size: 1.8rem; display: block; margin-bottom: 10px; opacity: 0.3; }
+        #listLoading { padding: 40px 16px; text-align: center; }
+        .spin { width: 22px; height: 22px; border: 2px solid var(--border); border-top-color: var(--red); border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto 10px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        #listLoading p { font-family: var(--mono); font-size: 0.68rem; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; }
+
+        /* ─── MAP ─── */
+        #map { flex: 1; background: #0d0d0d; }
+
+        /* ─── LAYER TOGGLE ─── */
+        .layer-bar {
+            position: absolute;
+            top: 12px; left: 16px;
+            z-index: 800;
+            display: flex; gap: 6px;
+        }
+        .layer-btn {
+            display: flex; align-items: center; gap: 7px;
+            background: rgba(8,8,8,0.9);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 7px 13px;
+            font-family: var(--mono);
+            font-size: 0.63rem; letter-spacing: 0.12em; text-transform: uppercase;
+            color: var(--muted);
+            cursor: pointer;
+            transition: all 0.18s;
+            backdrop-filter: blur(10px);
+            white-space: nowrap;
+        }
+        .layer-btn.on { color: var(--text); border-color: var(--border-hover); background: rgba(22,22,22,0.95); }
+        .layer-btn input { display: none; }
+        .layer-indicator { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
+        /* ─── SIDEBAR TOGGLE (mobile) ─── */
         #sidebarToggle {
             position: absolute;
-            top: 10px;
-            left: 10px;
+            top: 12px; left: 16px;
             z-index: 900;
             display: none;
+            background: rgba(8,8,8,0.9);
+            border: 1px solid var(--border);
+            color: var(--muted2);
+            width: 36px; height: 36px;
+            border-radius: 8px;
+            align-items: center; justify-content: center;
+            cursor: pointer; font-size: 1rem;
+            backdrop-filter: blur(10px);
         }
         @media (max-width: 768px) {
-            #sidebar { position: absolute; top: 0; bottom: 0; left: 0; z-index: 900; }
+            #sidebar { position: absolute; top: 0; left: 0; bottom: 0; z-index: 900; }
             #sidebarToggle { display: flex; }
-            #sidebar:not(.collapsed) ~ #sidebarToggle { left: 370px; }
+            .layer-bar { left: 60px; }
         }
 
-        /* Map */
-        #map { flex: 1; }
-
-        /* Sidebar sections */
-        .sidebar-header {
-            background: #0f172a;
-            color: white;
-            padding: 1rem;
-            font-weight: 600;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-        }
-        #incidentList { overflow-y: auto; flex: 1; }
-        .inc-item {
-            border-left: 4px solid transparent;
-            padding: 0.75rem 1rem;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
-            cursor: pointer;
-            transition: background 0.15s;
-            color: #e2e8f0;
-        }
-        .inc-item:hover { background: #334155; }
-        .inc-item.active { background: #2d3748; border-left-color: #ef4444; }
-
-        /* Legend */
+        /* ─── LEGEND ─── */
         #legend {
             position: absolute;
-            bottom: 20px;
-            right: 12px;
-            background: rgba(30,41,59,0.95);
-            border-radius: 12px;
-            padding: 12px 16px;
+            bottom: 36px; right: 12px;
             z-index: 800;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            font-size: 0.8rem;
-            min-width: 160px;
-            backdrop-filter: blur(8px);
-            border: 1px solid rgba(255,255,255,0.1);
-            color: #e2e8f0;
+            background: rgba(8,8,8,0.92);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 14px 16px;
+            min-width: 148px;
+            backdrop-filter: blur(12px);
         }
-        .legend-dot {
-            display: inline-block;
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            margin-right: 8px;
+        .legend-title {
+            font-family: var(--mono);
+            font-size: 0.58rem; letter-spacing: 0.2em; text-transform: uppercase;
+            color: var(--muted); margin-bottom: 10px;
         }
+        .legend-row { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; font-size: 0.78rem; }
+        .legend-row:last-child { margin-bottom: 0; }
+        .legend-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+        .legend-count { margin-left: auto; font-family: var(--mono); font-size: 0.65rem; color: var(--muted); }
+        .legend-sep { border-top: 1px solid var(--border); margin: 10px 0; }
 
-        /* Detail Panel */
+        /* ─── DETAIL PANEL ─── */
         #detailPanel {
             position: absolute;
-            top: 10px;
-            right: 12px;
-            width: 340px;
-            background: #1e293b;
-            border-radius: 16px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-            z-index: 800;
+            top: 12px; right: 12px;
+            width: 320px;
+            background: rgba(8,8,8,0.95);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            z-index: 810;
             display: none;
             overflow: hidden;
-            border: 1px solid rgba(255,255,255,0.1);
-            color: #e2e8f0;
+            backdrop-filter: blur(16px);
         }
-        #detailPanel .panel-close {
-            position: absolute;
-            top: 12px;
-            right: 12px;
-            background: rgba(0,0,0,0.5);
-            border: none;
-            color: white;
-            width: 28px;
-            height: 28px;
-            border-radius: 50%;
+        .detail-head {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 14px 16px;
+            background: var(--card2);
+            border-bottom: 1px solid var(--border);
+        }
+        .detail-head-label {
+            font-family: var(--mono);
+            font-size: 0.62rem; letter-spacing: 0.15em; text-transform: uppercase;
+            color: var(--muted);
+        }
+        .detail-close {
+            width: 26px; height: 26px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--muted2);
             cursor: pointer;
-            z-index: 10;
+            font-size: 0.75rem;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.15s;
         }
+        .detail-close:hover { color: var(--text); border-color: var(--border-hover); }
+        #detailContent { padding: 18px 16px; overflow-y: auto; max-height: calc(100vh - 160px); }
 
-        /* Status Bar */
+        .detail-icon { font-size: 2.2rem; margin-bottom: 10px; }
+        .detail-id { font-family: var(--mono); font-size: 0.65rem; color: var(--muted); letter-spacing: 0.1em; margin-bottom: 4px; }
+        .detail-type { font-size: 1.1rem; font-weight: 700; margin-bottom: 10px; }
+        .detail-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+        .detail-sep { border-top: 1px solid var(--border); margin: 14px 0; }
+        .detail-field { margin-bottom: 10px; }
+        .detail-field-label { font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); margin-bottom: 3px; }
+        .detail-field-val { font-size: 0.82rem; color: var(--muted2); line-height: 1.55; }
+        .detail-photo { width: 100%; height: 120px; object-fit: cover; border-radius: 8px; margin-bottom: 14px; border: 1px solid var(--border); }
+        .detail-actions { display: flex; flex-direction: column; gap: 7px; margin-top: 16px; }
+        .d-btn {
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            padding: 10px 14px; border-radius: 8px; border: 1px solid;
+            font-size: 0.78rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+            text-decoration: none; cursor: pointer; background: none;
+            font-family: var(--body);
+            transition: all 0.18s;
+        }
+        .d-btn-red { border-color: var(--red-border); color: #F87171; background: var(--red-dim); }
+        .d-btn-red:hover { background: rgba(232,39,26,0.18); }
+        .d-btn-ghost { border-color: var(--border); color: var(--muted2); }
+        .d-btn-ghost:hover { border-color: var(--border-hover); color: var(--text); }
+
+        /* ─── STATUS BAR ─── */
         #statusBar {
             position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: rgba(15,23,42,0.9);
-            color: #94a3b8;
-            font-size: 0.7rem;
-            padding: 6px 16px;
+            bottom: 0; left: 0; right: 0;
+            height: 28px;
+            display: flex; align-items: center; gap: 14px;
+            padding: 0 14px;
+            background: rgba(8,8,8,0.9);
+            border-top: 1px solid var(--border);
             z-index: 700;
-            display: flex;
-            gap: 1rem;
-            align-items: center;
-            backdrop-filter: blur(8px);
-            border-top: 1px solid rgba(255,255,255,0.05);
+            backdrop-filter: blur(10px);
         }
+        #statusText { font-family: var(--mono); font-size: 0.63rem; color: var(--muted); letter-spacing: 0.08em; }
+        #lastUpdated { font-family: var(--mono); font-size: 0.6rem; color: var(--muted); margin-left: auto; }
+        .refresh-btn {
+            font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.1em; text-transform: uppercase;
+            color: var(--muted2); background: none; border: 1px solid var(--border);
+            border-radius: 5px; padding: 3px 9px; cursor: pointer;
+            transition: all 0.18s;
+        }
+        .refresh-btn:hover { color: var(--text); border-color: var(--border-hover); }
 
-        /* Layer Toggle */
-        .layer-toggle {
-            position: absolute;
-            top: 10px;
-            left: 50px;
-            background: #1e293b;
-            border-radius: 8px;
-            padding: 8px 12px;
-            z-index: 800;
-            display: flex;
-            gap: 12px;
-            backdrop-filter: blur(8px);
-            border: 1px solid rgba(255,255,255,0.1);
-        }
-        .layer-toggle label {
-            color: #e2e8f0;
-            font-size: 0.75rem;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
+        /* ─── LEAFLET OVERRIDES ─── */
+        .leaflet-container { background: #0d1117 !important; font-family: var(--body); }
+        .leaflet-tile { filter: brightness(0.75) saturate(0.6) hue-rotate(180deg); }
+        .leaflet-control-zoom a { background: var(--card) !important; color: var(--muted2) !important; border-color: var(--border) !important; font-size: 0.9rem; }
+        .leaflet-control-zoom a:hover { background: var(--card2) !important; color: var(--text) !important; }
+        .leaflet-control-layers { background: var(--card) !important; border: 1px solid var(--border) !important; border-radius: 8px !important; color: var(--muted2) !important; font-family: var(--mono); font-size: 0.72rem; }
+        .leaflet-control-layers-toggle { background-color: var(--card) !important; }
+        .leaflet-popup-content-wrapper { background: rgba(8,8,8,0.96) !important; color: var(--text) !important; border: 1px solid var(--border) !important; border-radius: 10px !important; box-shadow: 0 8px 32px rgba(0,0,0,0.5) !important; font-family: var(--body); backdrop-filter: blur(16px); }
+        .leaflet-popup-tip { background: rgba(8,8,8,0.96) !important; }
+        .leaflet-popup-close-button { color: var(--muted2) !important; }
+        .leaflet-popup-close-button:hover { color: var(--text) !important; }
 
+        /* ─── PULSE ANIMATION ─── */
         @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(220,53,69,0.7); }
-            70% { box-shadow: 0 0 0 12px rgba(220,53,69,0); }
-            100% { box-shadow: 0 0 0 0 rgba(220,53,69,0); }
+            0%   { box-shadow: 0 0 0 0 rgba(232,39,26,0.7); }
+            70%  { box-shadow: 0 0 0 14px rgba(232,39,26,0); }
+            100% { box-shadow: 0 0 0 0 rgba(232,39,26,0); }
         }
-        .marker-critical { animation: pulse 1.4s infinite; }
+        .marker-pulse { animation: pulse 1.8s ease infinite; border-radius: 50%; }
     </style>
 </head>
 <body>
 
-<nav class="navbar-modern">
-    <div class="container d-flex align-items-center justify-content-between">
-        <a class="navbar-brand" href="../responders/responders_dashboard.php">
-            <i class="bi bi-map-fill me-1 brand-accent"></i>Disaster<span class="brand-accent">Response</span>
-            <span class="badge bg-danger ms-2" style="font-size: 0.6rem;">LIVE MAP</span>
-        </a>
-        <div class="d-flex gap-2">
-            <a href="../incidents/all.php" class="btn btn-outline-light btn-sm rounded-pill">
-                <i class="bi bi-list-ul me-1"></i>All Incidents
-            </a>
-            <a href="../responders/responders_dashboard.php" class="btn btn-outline-danger btn-sm rounded-pill">
-                <i class="bi bi-arrow-left me-1"></i>Dashboard
-            </a>
-        </div>
+<!-- ─── NAV ─── -->
+<nav class="nav">
+    <div style="display:flex;align-items:center;gap:14px;">
+        <a href="../responders/responders_dashboard.php" class="nav-brand"><i class="fas fa-map"></i><span>Live</span>Map</a>
+        <div class="live-badge"><span class="live-dot"></span>Live Feed</div>
+    </div>
+    <div class="nav-right">
+        <a href="../incidents/all.php" class="nav-btn">All Incidents</a>
+        <a href="../responders/responders_dashboard.php" class="nav-btn red"><i class="fas fa-arrow-left" style="font-size:0.7rem;"></i> Dashboard</a>
     </div>
 </nav>
 
 <div id="mapWrapper">
 
-    <!-- Sidebar -->
+    <!-- ─── SIDEBAR ─── -->
     <div id="sidebar">
-        <div class="sidebar-header d-flex justify-content-between align-items-center">
-            <span><i class="bi bi-exclamation-triangle-fill me-2" style="color: #ef4444;"></i>Active Incidents</span>
-            <span id="incidentCount" class="badge bg-danger">—</span>
+        <div class="sidebar-head">
+            <div class="sidebar-head-title"><i class="fas fa-triangle-exclamation"></i> Active Incidents</div>
+            <div class="inc-count" id="incidentCount">—</div>
         </div>
 
-        <!-- Filters -->
-        <div class="p-2 border-bottom border-secondary d-flex gap-1 flex-wrap">
-            <select id="filterSeverity" class="form-select form-select-sm bg-dark text-white border-secondary" style="width:auto;flex:1">
+        <div class="filter-row">
+            <select id="filterSeverity" class="filter-select">
                 <option value="">All Severities</option>
-                <option value="4">🔴 Critical</option>
-                <option value="3">🟠 High</option>
-                <option value="2">🟡 Medium</option>
-                <option value="1">🟢 Low</option>
+                <option value="4">Critical</option>
+                <option value="3">High</option>
+                <option value="2">Medium</option>
+                <option value="1">Low</option>
             </select>
-            <select id="filterType" class="form-select form-select-sm bg-dark text-white border-secondary" style="width:auto;flex:1">
+            <select id="filterType" class="filter-select">
                 <option value="">All Types</option>
                 <?php foreach ($incident_type_icons as $k => $icon): ?>
-                    <option value="<?= $k ?>"><?= $icon ?> <?= ucfirst(str_replace('_',' ',$k)) ?></option>
+                    <option value="<?= $k ?>"><?= ucfirst(str_replace('_',' ',$k)) ?></option>
                 <?php endforeach; ?>
             </select>
         </div>
 
-        <!-- Incident List -->
         <div id="incidentList">
-            <div class="text-center text-muted p-4" id="listPlaceholder">
-                <div class="spinner-border spinner-border-sm text-danger"></div>
-                <div class="mt-2 small">Loading incidents…</div>
+            <div id="listLoading">
+                <div class="spin"></div>
+                <p>Loading incidents…</p>
+            </div>
+            <div id="listEmpty"><i class="fas fa-inbox"></i>No incidents match the filter</div>
+        </div>
+    </div>
+
+    <!-- ─── MAP ─── -->
+    <div id="map"></div>
+
+    <!-- ─── SIDEBAR TOGGLE (mobile) ─── -->
+    <button id="sidebarToggle" onclick="document.getElementById('sidebar').classList.toggle('collapsed');setTimeout(()=>map.invalidateSize(),260);">
+        <i class="fas fa-bars"></i>
+    </button>
+
+    <!-- ─── LAYER BAR ─── -->
+    <div class="layer-bar" id="layerBar">
+        <label class="layer-btn on" id="btnIncidents">
+            <input type="checkbox" id="toggleIncidents" checked>
+            <span class="layer-indicator" style="background:var(--red);"></span>
+            Incidents
+        </label>
+        <label class="layer-btn" id="btnZones">
+            <input type="checkbox" id="toggleZones">
+            <span class="layer-indicator" style="background:var(--amber);"></span>
+            Zones
+        </label>
+        <label class="layer-btn" id="btnShelters">
+            <input type="checkbox" id="toggleShelters">
+            <span class="layer-indicator" style="background:var(--green);"></span>
+            Shelters
+        </label>
+    </div>
+
+    <!-- ─── LEGEND ─── */-->
+    <div id="legend">
+        <div class="legend-title">Severity</div>
+        <?php foreach (array_reverse($severity_meta, true) as $sev => $m): ?>
+        <div class="legend-row">
+            <span class="legend-dot" style="background:<?= $m['color'] ?>;"></span>
+            <span><?= $m['label'] ?></span>
+            <span class="legend-count"><?= $counts[$sev] ?? 0 ?></span>
+        </div>
+        <?php endforeach; ?>
+        <div class="legend-sep"></div>
+        <div class="legend-row"><span class="legend-dot" style="background:var(--green);"></span><span>Shelter</span></div>
+        <div class="legend-row"><span class="legend-dot" style="background:var(--amber);opacity:0.7;"></span><span>Danger Zone</span></div>
+    </div>
+
+    <!-- ─── DETAIL PANEL ─── -->
+    <div id="detailPanel">
+        <div class="detail-head">
+            <span class="detail-head-label">Incident Detail</span>
+            <button class="detail-close" onclick="closeDetail()"><i class="fas fa-xmark"></i></button>
+        </div>
+        <div id="detailContent">
+            <div id="detailLoading" style="text-align:center;padding:30px 0;">
+                <div class="spin" style="margin-bottom:10px;"></div>
+                <p style="font-family:var(--mono);font-size:0.68rem;color:var(--muted);letter-spacing:0.1em;">LOADING…</p>
             </div>
         </div>
     </div>
 
-    <!-- Map -->
-    <div id="map"></div>
-
-    <!-- Layer Toggle -->
-    <div class="layer-toggle">
-        <label>
-            <input type="checkbox" id="toggleIncidents" checked> 🔴 Incidents
-        </label>
-        <label>
-            <input type="checkbox" id="toggleZones"> ⚠️ Danger Zones
-        </label>
-        <label>
-            <input type="checkbox" id="toggleShelters"> 🏠 Shelters
-        </label>
-    </div>
-
-    <!-- Sidebar Toggle (Mobile) -->
-    <button id="sidebarToggle" class="btn btn-sm btn-dark shadow">
-        <i class="bi bi-layout-sidebar"></i>
-    </button>
-
-    <!-- Legend -->
-    <div id="legend">
-        <div class="fw-semibold mb-2">Severity</div>
-        <?php foreach (array_reverse($severity_meta, true) as $sev => $m): ?>
-        <div class="d-flex align-items-center mb-1">
-            <span class="legend-dot" style="background:<?= $m['color'] ?>"></span>
-            <span><?= $m['label'] ?></span>
-            <span class="ms-auto text-muted"><?= $counts[$sev] ?? 0 ?></span>
-        </div>
-        <?php endforeach; ?>
-        <hr class="my-2 bg-secondary">
-        <div class="d-flex align-items-center">
-            <span class="legend-dot" style="background:#22c55e"></span>
-            <span>Safe Shelter</span>
-        </div>
-        <div class="d-flex align-items-center mt-1">
-            <span class="legend-dot" style="background:#6c757d"></span>
-            <span>Danger Zone</span>
-        </div>
-    </div>
-
-    <!-- Detail Panel -->
-    <div id="detailPanel">
-        <button class="panel-close" onclick="closeDetail()">✕</button>
-        <div id="detailContent" class="p-3"></div>
-    </div>
-
-    <!-- Status Bar -->
+    <!-- ─── STATUS BAR ─── -->
     <div id="statusBar">
-        <span id="statusText">Initialising map…</span>
-        <span id="lastUpdated" class="ms-auto"></span>
-        <button onclick="forceRefresh()" class="btn btn-sm btn-outline-light py-0 px-2" style="font-size:0.7rem">
-            <i class="bi bi-arrow-clockwise"></i> Refresh
-        </button>
+        <span id="statusText">Initialising…</span>
+        <span id="lastUpdated"></span>
+        <button class="refresh-btn" onclick="forceRefresh()"><i class="fas fa-rotate-right" style="margin-right:4px;"></i>Refresh</button>
     </div>
 
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
 <script>
-// Configuration
 const SEVERITY_META = <?= json_encode($severity_meta) ?>;
-const TYPE_ICONS = <?= json_encode($incident_type_icons) ?>;
+const TYPE_ICONS    = <?= json_encode($incident_type_icons) ?>;
 
-// Initialize map
+// ─── MAP INIT ───
 const map = L.map('map', { zoomControl: false }).setView([-1.2921, 36.8219], 7);
 L.control.zoom({ position: 'bottomleft' }).addTo(map);
 
-// Base tile layers
-const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap contributors',
-    maxZoom: 19,
-});
-const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    attribution: 'Tiles © Esri',
-    maxZoom: 19,
-});
-osm.addTo(map);
-L.control.layers({ 'Street': osm, 'Satellite': satellite }, {}, { position: 'topleft' }).addTo(map);
+const tileOSM = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors', maxZoom: 19 });
+const tileSat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Tiles © Esri', maxZoom: 19 });
+tileOSM.addTo(map);
+L.control.layers({ 'Street': tileOSM, 'Satellite': tileSat }, {}, { position: 'topleft' }).addTo(map);
 
-// Layer groups
 let incidentLayer = L.layerGroup().addTo(map);
-let dangerZoneLayer = L.layerGroup().addTo(map);
-let shelterLayer = L.layerGroup().addTo(map);
+let zoneLayer     = L.layerGroup();
+let shelterLayer  = L.layerGroup();
 
-// State
 let allFeatures = [];
-let activeId = null;
-let pollTimer = null;
+let activeId    = null;
+let pollTimer   = null;
 
-// Custom icons
-function makeIcon(severity, type, status) {
-    const m = SEVERITY_META[severity] || SEVERITY_META[1];
-    const emoji = TYPE_ICONS[type] || '⚠️';
-    const fill = (status === 'assigned') ? '#6c757d' : m.color;
-    const size = (severity === 4) ? 40 : 32;
-    
-    const svg = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
-            <circle cx="${size/2}" cy="${size/2}" r="${size/2 - 2}"
-                    fill="${fill}" stroke="${m.border || '#555'}" stroke-width="2"
-                    opacity="0.92"/>
-            <text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle"
-                  font-size="${size * 0.45}px">${emoji}</text>
-        </svg>`;
-    
+// ─── MARKER FACTORY ───
+function makeMarker(severity, type, status) {
+    const m    = SEVERITY_META[severity] || SEVERITY_META[1];
+    const ico  = TYPE_ICONS[type] || '⚠️';
+    const isCrit = severity === 4 && status !== 'assigned';
+    const sz   = isCrit ? 42 : 34;
+    const fill = status === 'assigned' ? '#444' : m.color;
+    const html = `<div style="width:${sz}px;height:${sz}px;background:${fill};border-radius:50%;border:2px solid ${m.border};display:flex;align-items:center;justify-content:center;font-size:${sz*0.42}px;${isCrit ? 'animation:pulse 1.8s ease infinite;' : ''}">${ico}</div>`;
+    return L.divIcon({ html, className: '', iconSize: [sz, sz], iconAnchor: [sz/2, sz/2], popupAnchor: [0, -sz/2] });
+}
+
+function shelterMarker(pct) {
+    const c = pct >= 90 ? '#E8271A' : pct >= 70 ? '#D97706' : '#16A34A';
     return L.divIcon({
-        html: `<div class="${severity === 4 && status !== 'assigned' ? 'marker-critical' : ''}">${svg}</div>`,
-        className: '',
-        iconSize: [size, size],
-        iconAnchor: [size/2, size/2],
-        popupAnchor: [0, -size/2],
+        html: `<div style="width:28px;height:28px;background:${c};border-radius:50%;border:2px solid rgba(255,255,255,0.25);display:flex;align-items:center;justify-content:center;font-size:14px;">🏠</div>`,
+        className: '', iconSize: [28, 28], iconAnchor: [14, 14]
     });
 }
 
-// Load danger zones
-function loadDangerZones() {
-    fetch('map.php?action=zones')
-        .then(r => r.json())
-        .then(data => {
-            dangerZoneLayer.clearLayers();
-            data.features.forEach(f => {
-                const zone = L.geoJSON(f, {
-                    style: {
-                        color: f.properties.color,
-                        weight: 3,
-                        fillOpacity: 0.3,
-                        opacity: 0.8
-                    },
-                    popupContent: `<strong>⚠️ ${f.properties.name}</strong><br>${f.properties.description || ''}<br><span class="badge bg-danger">${f.properties.hazard_level}</span>`
-                }).addTo(dangerZoneLayer);
-            });
-        })
-        .catch(err => console.error('Error loading zones:', err));
+// ─── SIDEBAR RENDER ───
+function getSevClass(sev) {
+    const cols = {4:'rgba(232,39,26,0.12)',3:'rgba(217,119,6,0.1)',2:'rgba(202,138,4,0.1)',1:'rgba(22,163,74,0.1)'};
+    const tc   = {4:'#F87171',3:'#FBBF24',2:'#FDE68A',1:'#86EFAC'};
+    const bc   = {4:'rgba(232,39,26,0.28)',3:'rgba(217,119,6,0.25)',2:'rgba(202,138,4,0.22)',1:'rgba(22,163,74,0.25)'};
+    const lb   = {4:'Critical',3:'High',2:'Medium',1:'Low'};
+    return {bg:cols[sev]||cols[1], color:tc[sev]||tc[1], border:bc[sev]||bc[1], label:lb[sev]||lb[1]};
 }
 
-// Load shelters
+function renderSidebar() {
+    const data = filteredFeatures();
+    document.getElementById('listLoading').style.display = 'none';
+    document.getElementById('incidentCount').textContent = data.length;
+
+    const items = document.querySelectorAll('.inc-item');
+    items.forEach(el => el.remove());
+
+    const empty = document.getElementById('listEmpty');
+    if (data.length === 0) { empty.style.display = 'block'; return; }
+    empty.style.display = 'none';
+
+    const list = document.getElementById('incidentList');
+    data.forEach(f => {
+        const p = f.properties;
+        const s = getSevClass(p.severity);
+        const ico = TYPE_ICONS[p.type] || '⚠️';
+        const ts  = new Date(p.reported_at).toLocaleString('en-KE', { dateStyle: 'short', timeStyle: 'short' });
+        const el  = document.createElement('div');
+        el.className = 'inc-item' + (p.id === activeId ? ' active' : '');
+        el.style.borderLeftColor = SEVERITY_META[p.severity]?.color || '#444';
+        el.dataset.id  = p.id;
+        el.dataset.lat = f.geometry.coordinates[1];
+        el.dataset.lng = f.geometry.coordinates[0];
+        el.innerHTML = `
+            <div class="inc-header">
+                <div class="inc-title">${ico} #${p.id} — ${cap(p.type.replace(/_/g,' '))}</div>
+                <span class="sev-pip" style="background:${s.bg};color:${s.color};border-color:${s.border};">${s.label}</span>
+            </div>
+            <div class="inc-desc">${p.description || 'No description'}</div>
+            <div class="inc-meta">${ts} <span class="status-pip">${p.status}</span></div>`;
+        el.addEventListener('click', () => {
+            flyTo(parseFloat(el.dataset.lat), parseFloat(el.dataset.lng));
+            loadDetail(p.id);
+        });
+        list.insertBefore(el, empty);
+    });
+}
+
+function renderMarkers() {
+    incidentLayer.clearLayers();
+    filteredFeatures().forEach(f => {
+        const p  = f.properties;
+        const [lng, lat] = f.geometry.coordinates;
+        const m  = SEVERITY_META[p.severity] || SEVERITY_META[1];
+        const ts = new Date(p.reported_at).toLocaleString('en-KE', { dateStyle: 'short', timeStyle: 'short' });
+        const mk = L.marker([lat, lng], { icon: makeMarker(p.severity, p.type, p.status) });
+        mk.bindPopup(`
+            <div style="min-width:210px;font-family:'DM Sans',sans-serif;">
+                <div style="font-weight:700;font-size:0.95rem;margin-bottom:6px;">${TYPE_ICONS[p.type]||'⚠️'} #${p.id} — ${cap(p.type.replace(/_/g,' '))}</div>
+                <div style="display:flex;gap:6px;margin-bottom:8px;">
+                    <span style="background:${m.color};color:#000;font-size:0.65rem;font-weight:700;padding:2px 8px;border-radius:100px;">${m.label}</span>
+                    <span style="background:rgba(255,255,255,0.08);color:#9A9693;font-size:0.65rem;padding:2px 8px;border-radius:100px;border:1px solid rgba(255,255,255,0.07);">${p.status}</span>
+                </div>
+                <div style="font-size:0.8rem;color:#9A9693;margin-bottom:10px;line-height:1.55;">${(p.description||'').substring(0,110)}${(p.description||'').length>110?'…':''}</div>
+                <div style="font-size:0.7rem;color:#6B6865;margin-bottom:10px;">${ts}</div>
+                <button onclick="loadDetail(${p.id})" style="width:100%;background:#E8271A;border:none;border-radius:7px;padding:8px;font-size:0.75rem;font-weight:700;color:#fff;cursor:pointer;letter-spacing:0.06em;text-transform:uppercase;">View Details</button>
+            </div>`);
+        mk.on('click', () => { activeId = p.id; highlightItem(p.id); });
+        incidentLayer.addLayer(mk);
+    });
+}
+
+// ─── DETAIL PANEL ───
+function loadDetail(id) {
+    activeId = id;
+    highlightItem(id);
+    document.getElementById('detailPanel').style.display = 'block';
+    document.getElementById('detailContent').innerHTML = `<div style="text-align:center;padding:30px 0;"><div class="spin" style="margin-bottom:10px;"></div><p style="font-family:var(--mono);font-size:0.68rem;color:var(--muted);letter-spacing:0.1em;">LOADING…</p></div>`;
+    fetch(`map.php?action=detail&id=${id}`)
+        .then(r => r.json())
+        .then(d => {
+            const m   = SEVERITY_META[d.severity] || SEVERITY_META[1];
+            const ico = TYPE_ICONS[d.incident_type] || '⚠️';
+            const ts  = new Date(d.reported_at).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' });
+            const s   = getSevClass(d.severity);
+            document.getElementById('detailContent').innerHTML = `
+                <div class="detail-icon">${ico}</div>
+                <div class="detail-id">INCIDENT #${d.id}</div>
+                <div class="detail-type">${cap(d.incident_type.replace(/_/g,' '))}</div>
+                <div class="detail-badges">
+                    <span class="sev-pip" style="background:${s.bg};color:${s.color};border-color:${s.border};">${s.label}</span>
+                    <span class="sev-pip" style="background:rgba(255,255,255,0.04);color:var(--muted2);border-color:var(--border);">${d.status}</span>
+                </div>
+                ${d.photo_path ? `<img src="${d.photo_path}" class="detail-photo" alt="Incident photo">` : ''}
+                <div class="detail-field"><div class="detail-field-label">Description</div><div class="detail-field-val">${d.description || 'None provided'}</div></div>
+                <div class="detail-field"><div class="detail-field-label">Reported</div><div class="detail-field-val">${ts}</div></div>
+                <div class="detail-sep"></div>
+                <div class="detail-field"><div class="detail-field-label">Reporter</div><div class="detail-field-val">${d.reporter_name}</div></div>
+                <div class="detail-field"><div class="detail-field-label">Contact</div><div class="detail-field-val">${d.reporter_phone}</div></div>
+                <div class="detail-field"><div class="detail-field-label">Responder</div><div class="detail-field-val">${d.responder_name}</div></div>
+                <div class="detail-field"><div class="detail-field-label">Coordinates</div><div class="detail-field-val" style="font-family:var(--mono);font-size:0.72rem;">${parseFloat(d.latitude).toFixed(5)}, ${parseFloat(d.longitude).toFixed(5)}</div></div>
+                <div class="detail-actions">
+                    <a href="../incidents/view.php?id=${d.id}" class="d-btn d-btn-red"><i class="fas fa-eye"></i> Full Details</a>
+                    <button onclick="map.flyTo([${d.latitude},${d.longitude}],16)" class="d-btn d-btn-ghost"><i class="fas fa-crosshairs"></i> Centre Map</button>
+                </div>`;
+        })
+        .catch(() => { document.getElementById('detailContent').innerHTML = '<div style="color:#F87171;padding:20px;font-size:0.82rem;">Failed to load incident details.</div>'; });
+}
+function closeDetail() { document.getElementById('detailPanel').style.display = 'none'; activeId = null; highlightItem(null); }
+
+// ─── ZONES & SHELTERS ───
+function loadZones() {
+    fetch('map.php?action=zones').then(r=>r.json()).then(data => {
+        zoneLayer.clearLayers();
+        data.features.forEach(f => {
+            L.geoJSON(f, {
+                style: { color: f.properties.color, weight: 2, fillOpacity: 0.18, opacity: 0.7 }
+            }).bindPopup(`<div style="font-family:'DM Sans',sans-serif;"><strong>⚠️ ${f.properties.name}</strong><br><span style="font-size:0.78rem;color:#9A9693;">${f.properties.description||''}</span></div>`).addTo(zoneLayer);
+        });
+    });
+}
 function loadShelters() {
-    fetch('map.php?action=shelters')
-        .then(r => r.json())
-        .then(data => {
-            shelterLayer.clearLayers();
-            data.features.forEach(f => {
-                const p = f.properties;
-                const percent = (p.current_occupancy / p.capacity) * 100;
-                const statusColor = percent >= 90 ? '#ef4444' : (percent >= 70 ? '#f59e0b' : '#22c55e');
-                
-                const marker = L.marker([f.geometry.coordinates[1], f.geometry.coordinates[0]], {
-                    icon: L.divIcon({
-                        html: `<div style="background: ${statusColor}; border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
-                                    <span style="font-size: 14px;">${p.type_icon}</span>
-                                </div>`,
-                        className: '',
-                        iconSize: [28, 28],
-                        iconAnchor: [14, 14]
-                    })
-                }).bindPopup(`
-                    <div style="min-width: 200px;">
-                        <strong>🏠 ${p.name}</strong><br>
-                        <small>${p.type}</small><br>
-                        <div class="mt-2">Capacity: ${p.current_occupancy}/${p.capacity}</div>
-                        <div class="progress mt-1" style="height: 6px;">
-                            <div class="progress-bar bg-${percent >= 90 ? 'danger' : (percent >= 70 ? 'warning' : 'success')}" style="width: ${percent}%"></div>
-                        </div>
-                        ${p.address ? `<div class="mt-2"><i class="bi bi-geo-alt"></i> ${p.address}</div>` : ''}
-                        ${p.contact_phone ? `<div><i class="bi bi-telephone"></i> ${p.contact_phone}</div>` : ''}
-                        ${p.resources ? `<div class="mt-2 small"><strong>Resources:</strong> ${p.resources}</div>` : ''}
-                    </div>
-                `);
-                marker.addTo(shelterLayer);
-            });
-        })
-        .catch(err => console.error('Error loading shelters:', err));
+    fetch('map.php?action=shelters').then(r=>r.json()).then(data => {
+        shelterLayer.clearLayers();
+        data.features.forEach(f => {
+            const p   = f.properties;
+            const pct = p.capacity > 0 ? (p.current_occupancy / p.capacity) * 100 : 0;
+            L.marker([f.geometry.coordinates[1], f.geometry.coordinates[0]], { icon: shelterMarker(pct) })
+             .bindPopup(`<div style="font-family:'DM Sans',sans-serif;min-width:180px;">
+                <strong>🏠 ${p.name}</strong><br>
+                <span style="font-size:0.75rem;color:#9A9693;">${p.type||''}</span>
+                <div style="margin:8px 0;font-size:0.82rem;">Capacity: ${p.current_occupancy}/${p.capacity}</div>
+                <div style="height:4px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden;margin-bottom:8px;"><div style="height:100%;background:${pct>=90?'#E8271A':pct>=70?'#D97706':'#16A34A'};width:${pct}%;"></div></div>
+                ${p.address?`<div style="font-size:0.78rem;color:#9A9693;">${p.address}</div>`:''}
+                ${p.contact_phone?`<div style="font-size:0.78rem;color:#9A9693;">${p.contact_phone}</div>`:''}
+             </div>`).addTo(shelterLayer);
+        });
+    });
 }
 
-// Load incidents feed
+// ─── FEED ───
 function fetchFeed() {
     document.getElementById('statusText').textContent = 'Refreshing…';
-    
     fetch('map.php?action=feed', { cache: 'no-store' })
         .then(r => r.json())
         .then(data => {
             allFeatures = data.features || [];
             renderSidebar();
             renderMarkers();
-            const now = new Date().toLocaleTimeString();
-            document.getElementById('lastUpdated').textContent = `Updated: ${now}`;
+            document.getElementById('lastUpdated').textContent = 'Updated: ' + new Date().toLocaleTimeString();
             document.getElementById('statusText').textContent = `${data.total} active incident${data.total !== 1 ? 's' : ''}`;
         })
-        .catch(err => {
-            console.error('Feed error:', err);
-            document.getElementById('statusText').textContent = '⚠️ Connection error — retrying…';
-        });
+        .catch(() => { document.getElementById('statusText').textContent = '⚠ Connection error — retrying…'; });
 }
-
 function forceRefresh() { clearTimeout(pollTimer); fetchFeed(); schedulePoll(); }
 function schedulePoll() { pollTimer = setTimeout(() => { fetchFeed(); schedulePoll(); }, 30000); }
 
-// Filter functions
 function filteredFeatures() {
-    const sev = document.getElementById('filterSeverity').value;
+    const sev  = document.getElementById('filterSeverity').value;
     const type = document.getElementById('filterType').value;
-    return allFeatures.filter(f =>
-        (!sev || f.properties.severity == sev) &&
-        (!type || f.properties.type === type)
-    );
+    return allFeatures.filter(f => (!sev || f.properties.severity == sev) && (!type || f.properties.type === type));
 }
+function flyTo(lat, lng) { map.flyTo([lat, lng], 15, { duration: 1 }); }
+function highlightItem(id) { document.querySelectorAll('.inc-item').forEach(el => el.classList.toggle('active', parseInt(el.dataset.id) === id)); }
+function cap(str) { return str.charAt(0).toUpperCase() + str.slice(1); }
 
-// Render sidebar
-function renderSidebar() {
-    const list = document.getElementById('incidentList');
-    const data = filteredFeatures();
-    
-    document.getElementById('incidentCount').textContent = data.length;
-    
-    if (data.length === 0) {
-        list.innerHTML = '<div class="text-center text-muted p-4 small">No incidents match the filter.</div>';
-        return;
-    }
-    
-    list.innerHTML = data.map(f => {
-        const p = f.properties;
-        const m = SEVERITY_META[p.severity] || SEVERITY_META[1];
-        const ico = TYPE_ICONS[p.type] || '⚠️';
-        const ts = new Date(p.reported_at).toLocaleString('en-KE', { dateStyle: 'short', timeStyle: 'short' });
-        return `
-            <div class="inc-item ${p.id === activeId ? 'active' : ''}"
-                 style="border-left-color: ${m.color}"
-                 data-id="${p.id}"
-                 data-lat="${f.geometry.coordinates[1]}"
-                 data-lng="${f.geometry.coordinates[0]}">
-                <div class="d-flex justify-content-between align-items-start">
-                    <span class="fw-semibold">${ico} #${p.id} — ${capitalize(p.type.replace('_', ' '))}</span>
-                    <span class="badge" style="background: ${m.color}">${m.label}</span>
-                </div>
-                <div class="text-muted small mt-1 text-truncate">${p.description || 'No description'}</div>
-                <div class="text-muted small mt-1">${ts} • ${statusBadge(p.status)}</div>
-            </div>`;
-    }).join('');
-    
-    // Add click handlers
-    list.querySelectorAll('.inc-item').forEach(el => {
-        el.addEventListener('click', () => {
-            const id = parseInt(el.dataset.id);
-            const lat = parseFloat(el.dataset.lat);
-            const lng = parseFloat(el.dataset.lng);
-            flyToIncident(id, lat, lng);
-            loadDetail(id);
-        });
-    });
-}
-
-// Render markers
-function renderMarkers() {
-    incidentLayer.clearLayers();
-    
-    filteredFeatures().forEach(f => {
-        const p = f.properties;
-        const [lng, lat] = f.geometry.coordinates;
-        const marker = L.marker([lat, lng], { icon: makeIcon(p.severity, p.type, p.status) });
-        
-        const m = SEVERITY_META[p.severity] || SEVERITY_META[1];
-        const ts = new Date(p.reported_at).toLocaleString('en-KE', { dateStyle: 'short', timeStyle: 'short' });
-        marker.bindPopup(`
-            <div style="min-width: 200px;">
-                <strong>#${p.id} — ${capitalize(p.type.replace('_', ' '))}</strong><br>
-                <span class="badge" style="background: ${m.color}; color: white;">${m.label}</span>
-                <span class="badge bg-secondary ms-1">${p.status}</span><br>
-                <small class="text-muted">${ts}</small>
-                <hr>
-                <div style="font-size: 0.85rem;">${(p.description || '').substring(0, 120)}${(p.description || '').length > 120 ? '…' : ''}</div>
-                <button onclick="loadDetail(${p.id})" class="btn btn-sm btn-danger mt-2 w-100">View Details</button>
-            </div>
-        `);
-        
-        marker.on('click', () => {
-            activeId = p.id;
-            highlightSidebarItem(p.id);
-        });
-        
-        incidentLayer.addLayer(marker);
-    });
-}
-
-// Load detail panel
-function loadDetail(id) {
-    activeId = id;
-    highlightSidebarItem(id);
-    
-    const panel = document.getElementById('detailPanel');
-    const content = document.getElementById('detailContent');
-    content.innerHTML = '<div class="text-center p-3"><div class="spinner-border spinner-border-sm text-danger"></div></div>';
-    panel.style.display = 'block';
-    
-    fetch(`map.php?action=detail&id=${id}`)
-        .then(r => r.json())
-        .then(d => {
-            const m = SEVERITY_META[d.severity] || SEVERITY_META[1];
-            const ico = TYPE_ICONS[d.incident_type] || '⚠️';
-            const ts = new Date(d.reported_at).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' });
-            
-            content.innerHTML = `
-                <div class="d-flex align-items-center gap-2 mb-3">
-                    <span style="font-size: 1.8rem">${ico}</span>
-                    <div>
-                        <div class="fw-bold fs-5">Incident #${d.id}</div>
-                        <div class="small text-muted">${capitalize(d.incident_type.replace('_', ' '))}</div>
-                    </div>
-                </div>
-                <div class="mb-2">
-                    <span class="badge me-1" style="background: ${m.color}">${m.label} Severity</span>
-                    ${statusBadge(d.status)}
-                </div>
-                <div class="small text-muted mb-2">${ts}</div>
-                <p class="small mb-2">${d.description || '<em>No description provided.</em>'}</p>
-                ${d.photo_path ? `<img src="${d.photo_path}" class="img-fluid rounded mb-2" style="max-height: 120px; object-fit: cover; width: 100%;">` : ''}
-                <hr class="my-2 bg-secondary">
-                <div class="small">
-                    <div><strong>Reporter:</strong> ${d.reporter_name}</div>
-                    <div><strong>Phone:</strong> ${d.reporter_phone}</div>
-                    <div><strong>Responder:</strong> ${d.responder_name}</div>
-                    <div class="mt-1"><strong>GPS:</strong> ${parseFloat(d.latitude).toFixed(5)}, ${parseFloat(d.longitude).toFixed(5)}</div>
-                </div>
-                <div class="d-grid gap-1 mt-3">
-                    <a href="../incidents/view.php?id=${d.id}" class="btn btn-sm btn-danger">
-                        <i class="bi bi-eye me-1"></i>Full Details
-                    </a>
-                    <button onclick="map.flyTo([${d.latitude},${d.longitude}], 16)" class="btn btn-sm btn-outline-light">
-                        <i class="bi bi-crosshair me-1"></i>Centre Map
-                    </button>
-                </div>
-            `;
-        })
-        .catch(() => { content.innerHTML = '<div class="text-danger p-2 small">Failed to load details.</div>'; });
-}
-
-function closeDetail() {
-    document.getElementById('detailPanel').style.display = 'none';
-    activeId = null;
-    highlightSidebarItem(null);
-}
-
-function flyToIncident(id, lat, lng) {
-    map.flyTo([lat, lng], 15, { duration: 1 });
-}
-
-function highlightSidebarItem(id) {
-    document.querySelectorAll('.inc-item').forEach(el => {
-        el.classList.toggle('active', parseInt(el.dataset.id) === id);
-    });
-}
-
-function capitalize(str) {
-    return str.charAt(0).toUpperCase() + str.slice(1);
-}
-
-function statusBadge(status) {
-    const colors = { reported: 'danger', acknowledged: 'warning', 'in-progress': 'info', resolved: 'success', cancelled: 'secondary', rejected: 'danger' };
-    return `<span class="badge bg-${colors[status] || 'secondary'}">${status.replace('-', ' ')}</span>`;
-}
-
-// Layer toggles
-document.getElementById('toggleIncidents').addEventListener('change', (e) => {
-    if (e.target.checked) incidentLayer.addTo(map);
-    else incidentLayer.remove();
+// ─── LAYER BUTTONS ───
+document.getElementById('toggleIncidents').addEventListener('change', e => {
+    document.getElementById('btnIncidents').classList.toggle('on', e.target.checked);
+    e.target.checked ? incidentLayer.addTo(map) : incidentLayer.remove();
 });
-document.getElementById('toggleZones').addEventListener('change', (e) => {
-    if (e.target.checked) { loadDangerZones(); dangerZoneLayer.addTo(map); }
-    else dangerZoneLayer.remove();
+document.getElementById('toggleZones').addEventListener('change', e => {
+    document.getElementById('btnZones').classList.toggle('on', e.target.checked);
+    if (e.target.checked) { loadZones(); zoneLayer.addTo(map); } else zoneLayer.remove();
 });
-document.getElementById('toggleShelters').addEventListener('change', (e) => {
-    if (e.target.checked) { loadShelters(); shelterLayer.addTo(map); }
-    else shelterLayer.remove();
+document.getElementById('toggleShelters').addEventListener('change', e => {
+    document.getElementById('btnShelters').classList.toggle('on', e.target.checked);
+    if (e.target.checked) { loadShelters(); shelterLayer.addTo(map); } else shelterLayer.remove();
 });
 
-// Filter listeners
 document.getElementById('filterSeverity').addEventListener('change', () => { renderSidebar(); renderMarkers(); });
-document.getElementById('filterType').addEventListener('change', () => { renderSidebar(); renderMarkers(); });
+document.getElementById('filterType').addEventListener('change',     () => { renderSidebar(); renderMarkers(); });
 
-// Sidebar toggle
-document.getElementById('sidebarToggle').addEventListener('click', () => {
-    document.getElementById('sidebar').classList.toggle('collapsed');
-    setTimeout(() => map.invalidateSize(), 300);
-});
-
-// Initial load
 fetchFeed();
 schedulePoll();
-loadDangerZones();
-loadShelters();
 </script>
 </body>
 </html>

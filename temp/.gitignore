@@ -1,0 +1,14 @@
+# Ignore all uploaded files
+uploads/*
+!uploads/.gitignore
+
+# Ignore cache files
+cache/*
+!cache/.gitignore
+
+# Ignore session files
+sessions/*
+!sessions/.gitignore
+
+# Keep directory structure
+!.gitignore
