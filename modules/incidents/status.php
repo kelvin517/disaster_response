@@ -1,100 +1,79 @@
 <?php
 /**
- * Track My Reports - Victim Status Page
+ * Track My Reports — Victim Status Page
  * Disaster Response & Resource Coordination System
- * Author: Kevin Kiplangat | INTE/MK/1299/09/23
- * 
- * Allows victims/public users to track the status of incidents they have reported
  */
 
 session_start();
 require_once __DIR__ . '/../../includes/config/config.php';
 require_once __DIR__ . '/../../includes/functions/auth.php';
 
-// Only authenticated users can access
-if (!isLoggedIn()) {
-    redirect('modules/auth/login.php');
-}
+if (!isLoggedIn()) redirect('modules/auth/login.php');
 
-$user_id = $_SESSION['user_id'];
-
-// Handle adding additional information
+$user_id       = $_SESSION['user_id'];
 $update_success = null;
-$update_error = null;
+$update_error   = null;
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_update') {
-    $incident_id = (int)$_POST['incident_id'];
-    $additional_info = trim($_POST['additional_info']);
-    
+/* ─── ADD UPDATE ─── */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_update') {
+    $incident_id     = (int)$_POST['incident_id'];
+    $additional_info = trim($_POST['additional_info'] ?? '');
+
     if (empty($additional_info)) {
-        $update_error = "Please enter additional information.";
+        $update_error = "Please enter some additional information before submitting.";
     } else {
-        try {
-            // Insert update into incident_updates table
-            $stmt = $pdo->prepare("
-                INSERT INTO incident_updates (incident_id, user_id, update_text, created_at)
-                VALUES (?, ?, ?, NOW())
-            ");
-            $stmt->execute([$incident_id, $user_id, $additional_info]);
-            $update_success = "Additional information added successfully. Responders have been notified.";
-        } catch (PDOException $e) {
-            error_log("Failed to add update: " . $e->getMessage());
-            $update_error = "Failed to add update. Please try again.";
+        // Verify the incident belongs to this user
+        $chk = $pdo->prepare("SELECT id FROM incidents WHERE id = ? AND reporter_id = ?");
+        $chk->execute([$incident_id, $user_id]);
+        if (!$chk->fetch()) {
+            $update_error = "You are not authorised to update this report.";
+        } else {
+            try {
+                $stmt = $pdo->prepare("INSERT INTO incident_updates (incident_id, user_id, update_text, created_at) VALUES (?, ?, ?, NOW())");
+                $stmt->execute([$incident_id, $user_id, $additional_info]);
+                $update_success = "Update added successfully. Responders have been notified.";
+            } catch (PDOException $e) {
+                error_log("Failed to add update: " . $e->getMessage());
+                $update_error = "Failed to save your update. Please try again.";
+            }
         }
     }
 }
 
-// Handle cancelling a report
-if (isset($_GET['cancel']) && is_numeric($_GET['cancel'])) {
+/* ─── CANCEL REPORT ─── */
+if (isset($_GET['cancel']) && ctype_digit((string)$_GET['cancel'])) {
     $incident_id = (int)$_GET['cancel'];
-    
-    // Check if incident belongs to this user and is still cancellable
-    $stmt = $pdo->prepare("
-        SELECT id, status FROM incidents 
-        WHERE id = ? AND reporter_id = ? AND status IN ('reported', 'acknowledged')
-    ");
+    $stmt = $pdo->prepare("SELECT id FROM incidents WHERE id = ? AND reporter_id = ? AND status IN ('reported','acknowledged')");
     $stmt->execute([$incident_id, $user_id]);
-    $incident = $stmt->fetch();
-    
-    if ($incident) {
-        $stmt = $pdo->prepare("UPDATE incidents SET status = 'cancelled' WHERE id = ?");
-        $stmt->execute([$incident_id]);
+    if ($stmt->fetch()) {
+        $pdo->prepare("UPDATE incidents SET status = 'cancelled', updated_at = NOW() WHERE id = ?")->execute([$incident_id]);
         $update_success = "Your report has been cancelled.";
     } else {
-        $update_error = "Unable to cancel this report. It may already be in progress or resolved.";
+        $update_error = "Unable to cancel — this report may already be in progress or resolved.";
     }
 }
 
-// Fetch all incidents reported by this user
+/* ─── FETCH REPORTS ─── */
 $stmt = $pdo->prepare("
-    SELECT i.*, 
-           CASE 
-               WHEN i.status = 'reported' THEN '📋 Report Received'
-               WHEN i.status = 'acknowledged' THEN '👀 Under Review'
-               WHEN i.status = 'in-progress' THEN '🚑 Responders En Route'
-               WHEN i.status = 'resolved' THEN '✅ Resolved'
-               WHEN i.status = 'cancelled' THEN '❌ Cancelled'
-               WHEN i.status = 'rejected' THEN '⚠️ Rejected'
-               ELSE '📌 ' || i.status
-           END as status_display,
-           CASE 
-               WHEN i.status = 'reported' THEN 25
-               WHEN i.status = 'acknowledged' THEN 50
-               WHEN i.status = 'in-progress' THEN 75
-               WHEN i.status = 'resolved' THEN 100
-               WHEN i.status = 'cancelled' THEN 100
-               WHEN i.status = 'rejected' THEN 100
+    SELECT i.*,
+           CASE i.status
+               WHEN 'reported'     THEN 'Report Received'
+               WHEN 'acknowledged' THEN 'Under Review'
+               WHEN 'in-progress'  THEN 'Responders En Route'
+               WHEN 'resolved'     THEN 'Resolved'
+               WHEN 'cancelled'    THEN 'Cancelled'
+               WHEN 'rejected'     THEN 'Rejected'
+               ELSE i.status
+           END AS status_display,
+           CASE i.status
+               WHEN 'reported'     THEN 25
+               WHEN 'acknowledged' THEN 50
+               WHEN 'in-progress'  THEN 75
+               WHEN 'resolved'     THEN 100
+               WHEN 'cancelled'    THEN 100
+               WHEN 'rejected'     THEN 100
                ELSE 0
-           END as progress_percent,
-           CASE 
-               WHEN i.status = 'reported' THEN 'progress-bar-striped progress-bar-animated'
-               WHEN i.status = 'acknowledged' THEN 'progress-bar-striped progress-bar-animated'
-               WHEN i.status = 'in-progress' THEN 'progress-bar-striped progress-bar-animated'
-               WHEN i.status = 'resolved' THEN 'bg-success'
-               WHEN i.status = 'cancelled' THEN 'bg-secondary'
-               WHEN i.status = 'rejected' THEN 'bg-danger'
-               ELSE ''
-           END as progress_class
+           END AS progress_percent
     FROM incidents i
     WHERE i.reporter_id = ?
     ORDER BY i.reported_at DESC
@@ -102,35 +81,72 @@ $stmt = $pdo->prepare("
 $stmt->execute([$user_id]);
 $my_reports = $stmt->fetchAll();
 
-// Get incident updates for each report
+/* ─── FETCH UPDATES ─── */
 $incident_updates = [];
 if (!empty($my_reports)) {
-    $ids = array_column($my_reports, 'id');
+    $ids          = array_column($my_reports, 'id');
     $placeholders = implode(',', array_fill(0, count($ids), '?'));
     $stmt = $pdo->prepare("
-        SELECT iu.*, u.full_name as user_name 
-        FROM incident_updates iu
-        JOIN users u ON iu.user_id = u.id
-        WHERE iu.incident_id IN ($placeholders)
-        ORDER BY iu.created_at DESC
+        SELECT iu.*, u.full_name AS user_name
+        FROM   incident_updates iu
+        JOIN   users u ON u.id = iu.user_id
+        WHERE  iu.incident_id IN ($placeholders)
+        ORDER  BY iu.created_at DESC
     ");
     $stmt->execute($ids);
-    $updates = $stmt->fetchAll();
-    
-    foreach ($updates as $update) {
-        $incident_updates[$update['incident_id']][] = $update;
+    foreach ($stmt->fetchAll() as $upd) {
+        $incident_updates[$upd['incident_id']][] = $upd;
     }
 }
 
-// Get severity label helper
-function getSeverityLabel($severity) {
-    $labels = [
-        1 => ['label' => 'Low', 'color' => '#28a745', 'icon' => '🟢'],
-        2 => ['label' => 'Medium', 'color' => '#ffc107', 'icon' => '🟡'],
-        3 => ['label' => 'High', 'color' => '#fd7e14', 'icon' => '🟠'],
-        4 => ['label' => 'Critical', 'color' => '#dc3545', 'icon' => '🔴']
-    ];
-    return $labels[$severity] ?? ['label' => 'Unknown', 'color' => '#6c757d', 'icon' => '⚪'];
+/* ─── QUICK STATS ─── */
+$total    = count($my_reports);
+$active   = count(array_filter($my_reports, fn($r) => in_array($r['status'], ['reported','acknowledged','in-progress'])));
+$resolved = count(array_filter($my_reports, fn($r) => $r['status'] === 'resolved'));
+$pending  = count(array_filter($my_reports, fn($r) => $r['status'] === 'reported'));
+
+/* ─── HELPERS ─── */
+function getSev(int $sev): array {
+    return [
+        1 => ['label' => 'Low',      'color' => '#16A34A', 'dim' => 'rgba(22,163,74,0.1)',    'border' => 'rgba(22,163,74,0.25)'],
+        2 => ['label' => 'Medium',   'color' => '#CA8A04', 'dim' => 'rgba(202,138,4,0.1)',    'border' => 'rgba(202,138,4,0.22)'],
+        3 => ['label' => 'High',     'color' => '#D97706', 'dim' => 'rgba(217,119,6,0.1)',    'border' => 'rgba(217,119,6,0.25)'],
+        4 => ['label' => 'Critical', 'color' => '#E8271A', 'dim' => 'rgba(232,39,26,0.1)',    'border' => 'rgba(232,39,26,0.28)'],
+    ][$sev] ?? ['label' => 'Unknown', 'color' => '#6B6865', 'dim' => 'rgba(107,104,101,0.1)', 'border' => 'rgba(107,104,101,0.2)'];
+}
+
+function statusMeta(string $status): array {
+    return [
+        'reported'     => ['label' => 'Received',   'color' => '#60A5FA', 'dim' => 'rgba(96,165,250,0.1)',  'border' => 'rgba(96,165,250,0.25)'],
+        'acknowledged' => ['label' => 'Reviewing',  'color' => '#FBBF24', 'dim' => 'rgba(251,191,36,0.1)',  'border' => 'rgba(251,191,36,0.25)'],
+        'in-progress'  => ['label' => 'En Route',   'color' => '#818CF8', 'dim' => 'rgba(129,140,248,0.1)', 'border' => 'rgba(129,140,248,0.25)'],
+        'resolved'     => ['label' => 'Resolved',   'color' => '#4ADE80', 'dim' => 'rgba(74,222,128,0.1)',  'border' => 'rgba(74,222,128,0.25)'],
+        'cancelled'    => ['label' => 'Cancelled',  'color' => '#6B6865', 'dim' => 'rgba(107,104,101,0.08)','border' => 'rgba(107,104,101,0.2)'],
+        'rejected'     => ['label' => 'Rejected',   'color' => '#F87171', 'dim' => 'rgba(248,113,113,0.1)', 'border' => 'rgba(248,113,113,0.25)'],
+    ][$status] ?? ['label' => ucfirst($status), 'color' => '#6B6865', 'dim' => 'rgba(107,104,101,0.08)', 'border' => 'rgba(107,104,101,0.2)'];
+}
+
+function progressColor(string $status): string {
+    return match($status) {
+        'resolved'  => '#4ADE80',
+        'cancelled' => '#6B6865',
+        'rejected'  => '#F87171',
+        default     => '#E8271A',
+    };
+}
+
+function incidentIcon(string $type): string {
+    return match($type) {
+        'flood'             => '🌊',
+        'fire'              => '🔥',
+        'earthquake'        => '🏚️',
+        'landslide'         => '⛰️',
+        'drought'           => '☀️',
+        'accident'          => '🚗',
+        'building_collapse' => '🏗️',
+        'disease_outbreak'  => '🦠',
+        default             => '⚠️',
+    };
 }
 ?>
 <!DOCTYPE html>
@@ -138,383 +154,490 @@ function getSeverityLabel($severity) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Reports - DisasterResponse</title>
-    
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    
+    <title>My Reports — DisasterResponse</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Inter', sans-serif; background: #f0f2f5; }
-        
-        .navbar-modern {
-            background: white;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-            padding: 0.75rem 0;
+        :root {
+            --black:  #080808;
+            --surface:#111111;
+            --card:   #161616;
+            --card2:  #1C1C1C;
+            --border: rgba(255,255,255,0.07);
+            --border-hover: rgba(255,255,255,0.13);
+            --red:    #E8271A;
+            --red-dim:rgba(232,39,26,0.1);
+            --red-border:rgba(232,39,26,0.28);
+            --text:   #F0EDE8;
+            --muted:  #6B6865;
+            --muted2: #9A9693;
+            --heading:'Bebas Neue', sans-serif;
+            --body:   'DM Sans', sans-serif;
+            --mono:   'DM Mono', monospace;
         }
-        
-        .navbar-brand {
-            font-weight: 800;
-            font-size: 1.5rem;
-            background: linear-gradient(135deg, #dc3545, #b91c1c);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body { font-family: var(--body); background: var(--black); color: var(--text); min-height: 100vh; }
+        ::-webkit-scrollbar { width: 3px; }
+        ::-webkit-scrollbar-track { background: var(--black); }
+        ::-webkit-scrollbar-thumb { background: var(--red); border-radius: 2px; }
+
+        /* ─── NAV ─── */
+        .nav {
+            position: sticky; top: 0; z-index: 100;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 13px 32px;
+            background: rgba(8,8,8,0.93);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border);
         }
-        
+        .nav-brand {
+            font-family: var(--heading); font-size: 1.5rem; letter-spacing: 0.06em;
+            color: var(--red); text-decoration: none;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .nav-brand span { color: var(--text); }
+        .nav-right { display: flex; align-items: center; gap: 6px; }
+        .nav-pill {
+            font-size: 0.75rem; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase;
+            color: var(--muted); text-decoration: none; padding: 7px 14px;
+            border-radius: 6px; border: 1px solid transparent; transition: all 0.18s;
+        }
+        .nav-pill:hover { color: var(--text); border-color: var(--border); background: var(--card); }
+        .nav-pill.primary { color: #F87171; border-color: var(--red-border); background: var(--red-dim); }
+        .nav-pill.primary:hover { background: rgba(232,39,26,0.18); }
+
+        /* ─── PAGE HEADER ─── */
         .page-header {
-            background: linear-gradient(135deg, #dc3545, #b91c1c);
-            border-radius: 0 0 30px 30px;
-            padding: 2rem 0;
-            color: white;
-            margin-bottom: 2rem;
+            background: var(--surface); border-bottom: 1px solid var(--border);
+            padding: 36px 32px 32px; position: relative; overflow: hidden;
         }
-        
+        .page-header::after {
+            content: ''; position: absolute; right: 0; top: 0; bottom: 0; width: 45%;
+            background: radial-gradient(ellipse at right center, rgba(232,39,26,0.07) 0%, transparent 65%);
+            pointer-events: none;
+        }
+        .page-header-inner { max-width: 1100px; margin: 0 auto; position: relative; z-index: 1; display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 20px; }
+        .eyebrow { font-family: var(--mono); font-size: 0.65rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--red); margin-bottom: 8px; }
+        .page-title { font-family: var(--heading); font-size: clamp(2.6rem, 5vw, 4rem); letter-spacing: 0.02em; line-height: 0.95; }
+        .page-sub { font-size: 0.85rem; color: var(--muted2); margin-top: 8px; }
+
+        /* ─── LAYOUT ─── */
+        .page { max-width: 1100px; margin: 0 auto; padding: 28px 32px 80px; }
+
+        /* ─── TOASTS ─── */
+        .toast-bar {
+            display: flex; align-items: center; gap: 12px;
+            padding: 13px 18px; border-radius: 10px;
+            font-size: 0.84rem; font-weight: 500;
+            margin-bottom: 20px; border: 1px solid;
+        }
+        .toast-success { background: rgba(22,163,74,0.1); border-color: rgba(22,163,74,0.25); color: #4ADE80; }
+        .toast-error   { background: var(--red-dim); border-color: var(--red-border); color: #F87171; }
+        .toast-bar button { margin-left: auto; background: none; border: none; cursor: pointer; color: inherit; opacity: 0.6; font-size: 1rem; padding: 0; line-height: 1; }
+        .toast-bar button:hover { opacity: 1; }
+
+        /* ─── STATS ROW ─── */
+        .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 28px; }
+        .stat-block {
+            background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+            padding: 18px 20px; position: relative; overflow: hidden; transition: border-color 0.2s;
+        }
+        .stat-block:hover { border-color: var(--border-hover); }
+        .stat-block::before { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px; }
+        .stat-block.s-total::before  { background: #60A5FA; }
+        .stat-block.s-active::before { background: var(--red); }
+        .stat-block.s-done::before   { background: #4ADE80; }
+        .stat-block.s-pending::before{ background: #FBBF24; }
+        .stat-label { font-family: var(--mono); font-size: 0.62rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+        .stat-value { font-family: var(--heading); font-size: 2.8rem; letter-spacing: 0.02em; line-height: 1; }
+        .stat-value.c-blue  { color: #60A5FA; }
+        .stat-value.c-red   { color: #F87171; }
+        .stat-value.c-green { color: #4ADE80; }
+        .stat-value.c-amber { color: #FBBF24; }
+
+        /* ─── REPORT CARD ─── */
         .report-card {
-            background: white;
-            border-radius: 20px;
-            border: none;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-            margin-bottom: 1.5rem;
-            overflow: hidden;
-            transition: transform 0.2s, box-shadow 0.2s;
+            background: var(--card); border: 1px solid var(--border);
+            border-radius: 14px; overflow: hidden; margin-bottom: 16px;
+            transition: border-color 0.2s;
         }
-        
-        .report-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+        .report-card:hover { border-color: var(--border-hover); }
+
+        .rc-head {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 16px 20px; background: var(--card2);
+            border-bottom: 1px solid var(--border);
+            flex-wrap: wrap; gap: 10px;
         }
-        
-        .card-header-custom {
-            background: white;
-            border-bottom: 1px solid #f0f0f0;
-            padding: 1rem 1.5rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 0.5rem;
+        .rc-head-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+        .report-id {
+            font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.1em;
+            color: var(--red); background: var(--red-dim); border: 1px solid var(--red-border);
+            padding: 4px 12px; border-radius: 100px;
         }
-        
-        .incident-id {
-            font-weight: 700;
-            font-size: 1rem;
-            background: #f8f9fa;
-            padding: 0.25rem 0.75rem;
-            border-radius: 20px;
-            color: #dc3545;
+        .sev-pip {
+            font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.1em; text-transform: uppercase;
+            padding: 4px 10px; border-radius: 100px; border: 1px solid;
         }
-        
-        .severity-badge {
-            padding: 0.25rem 0.75rem;
-            border-radius: 20px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.25rem;
+        .status-pip {
+            font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.1em; text-transform: uppercase;
+            padding: 4px 10px; border-radius: 100px; border: 1px solid;
         }
-        
-        .status-badge {
-            padding: 0.25rem 0.75rem;
-            border-radius: 20px;
-            font-size: 0.7rem;
-            font-weight: 600;
+        .rc-head-right { display: flex; gap: 8px; }
+        .rc-btn {
+            display: inline-flex; align-items: center; gap: 6px;
+            font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+            padding: 7px 14px; border-radius: 7px; border: 1px solid;
+            text-decoration: none; cursor: pointer; background: none; font-family: var(--body);
+            transition: all 0.18s; white-space: nowrap;
         }
-        
-        .progress {
-            height: 8px;
-            border-radius: 10px;
-            background-color: #e9ecef;
+        .rc-btn-ghost { border-color: var(--border); color: var(--muted2); }
+        .rc-btn-ghost:hover { border-color: var(--border-hover); color: var(--text); }
+        .rc-btn-red { border-color: var(--red-border); color: #F87171; background: var(--red-dim); }
+        .rc-btn-red:hover { background: rgba(232,39,26,0.18); }
+
+        /* ─── RC BODY ─── */
+        .rc-body { padding: 22px 20px; }
+        .rc-icon { font-size: 2.2rem; margin-bottom: 12px; }
+        .rc-type { font-size: 1.05rem; font-weight: 700; margin-bottom: 14px; }
+
+        .rc-meta-grid {
+            display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-bottom: 18px;
         }
-        
-        .progress-bar {
-            border-radius: 10px;
-            transition: width 0.5s ease;
+        .meta-item {}
+        .meta-label { font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+        .meta-val { font-size: 0.84rem; color: var(--muted2); }
+        .meta-desc { grid-column: 1 / -1; }
+
+        /* ─── PROGRESS ─── */
+        .progress-section { margin-bottom: 20px; }
+        .progress-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .progress-label { font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); }
+        .progress-pct { font-family: var(--mono); font-size: 0.65rem; color: var(--muted2); }
+        .progress-track { height: 5px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; margin-bottom: 10px; }
+        .progress-fill { height: 100%; border-radius: 3px; transition: width 0.6s cubic-bezier(0.4,0,0.2,1); }
+        .progress-steps { display: flex; justify-content: space-between; }
+        .step-label { font-family: var(--mono); font-size: 0.58rem; color: var(--muted); letter-spacing: 0.06em; }
+
+        /* ─── UPDATES SECTION ─── */
+        .updates-section { border-top: 1px solid var(--border); padding-top: 18px; }
+        .updates-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+        .updates-title { font-family: var(--mono); font-size: 0.62rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+        .toggle-update-btn {
+            display: inline-flex; align-items: center; gap: 6px;
+            font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+            color: var(--red); background: var(--red-dim); border: 1px solid var(--red-border);
+            padding: 6px 12px; border-radius: 7px; cursor: pointer; font-family: var(--body);
+            transition: background 0.18s;
         }
-        
+        .toggle-update-btn:hover { background: rgba(232,39,26,0.18); }
+
+        .update-form { display: none; margin-bottom: 14px; }
+        .update-form.open { display: block; }
+        .update-form-inner { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+        .update-textarea {
+            width: 100%; background: var(--card); border: 1px solid var(--border);
+            border-radius: 8px; padding: 10px 12px; font-family: var(--body);
+            font-size: 0.84rem; color: var(--text); resize: vertical; min-height: 72px;
+            outline: none; transition: border-color 0.18s; margin-bottom: 10px;
+        }
+        .update-textarea::placeholder { color: var(--muted); }
+        .update-textarea:focus { border-color: var(--red-border); }
+
         .update-item {
-            background: #f8f9fa;
-            border-radius: 12px;
-            padding: 0.75rem;
-            margin-bottom: 0.5rem;
+            display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border);
         }
-        
-        .update-item:last-child { margin-bottom: 0; }
-        
-        .btn-outline-danger-custom {
-            border: 1px solid #dc3545;
-            color: #dc3545;
-            background: transparent;
-            border-radius: 20px;
-            padding: 0.25rem 0.75rem;
-            font-size: 0.75rem;
-            transition: all 0.2s;
+        .update-item:last-child { border-bottom: none; padding-bottom: 0; }
+        .update-avatar {
+            width: 30px; height: 30px; flex-shrink: 0;
+            background: var(--card2); border: 1px solid var(--border);
+            border-radius: 8px; display: flex; align-items: center; justify-content: center;
+            font-family: var(--heading); font-size: 1rem; color: var(--muted2);
         }
-        
-        .btn-outline-danger-custom:hover {
-            background: #dc3545;
-            color: white;
+        .update-body { flex: 1; }
+        .update-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+        .update-name { font-size: 0.8rem; font-weight: 600; }
+        .update-time { font-family: var(--mono); font-size: 0.62rem; color: var(--muted); }
+        .update-text { font-size: 0.82rem; color: var(--muted2); line-height: 1.6; }
+
+        .no-updates { padding: 16px 0; text-align: center; font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+
+        /* ─── EMPTY STATE ─── */
+        .empty-state { text-align: center; padding: 70px 30px; background: var(--card); border: 1px solid var(--border); border-radius: 14px; }
+        .empty-state i { font-size: 2.5rem; color: var(--muted); opacity: 0.3; display: block; margin-bottom: 16px; }
+        .empty-state h3 { font-family: var(--heading); font-size: 2rem; letter-spacing: 0.04em; margin-bottom: 8px; }
+        .empty-state p { font-size: 0.85rem; color: var(--muted2); margin-bottom: 24px; }
+
+        /* ─── HOTLINE BAR ─── */
+        .hotline-bar {
+            display: flex; align-items: center; justify-content: center; gap: 20px;
+            padding: 14px 20px; margin-top: 32px;
+            background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+            font-size: 0.82rem; color: var(--muted2); flex-wrap: wrap;
         }
-        
-        .empty-state {
-            text-align: center;
-            padding: 3rem;
-            background: white;
-            border-radius: 20px;
-        }
-        
-        .empty-state i {
-            font-size: 3rem;
-            color: #dee2e6;
-            margin-bottom: 1rem;
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        .report-card {
-            animation: fadeIn 0.3s ease-out;
-        }
-        
-        @media (max-width: 768px) {
-            .page-header h1 { font-size: 1.5rem; }
-            .card-header-custom { flex-direction: column; align-items: flex-start; }
+        .hotline-bar strong { color: var(--text); }
+        .hotline-bar .sep { width: 1px; height: 14px; background: var(--border); }
+
+        /* ─── REVEAL ─── */
+        .reveal { opacity: 0; transform: translateY(14px); transition: opacity 0.5s ease, transform 0.5s ease; }
+        .reveal.in { opacity: 1; transform: translateY(0); }
+
+        @media (max-width: 860px) {
+            .nav { padding: 12px 16px; }
+            .page-header { padding: 28px 16px 24px; }
+            .page { padding: 20px 16px 60px; }
+            .stats-row { grid-template-columns: repeat(2, 1fr); }
+            .rc-meta-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
 <body>
 
-<nav class="navbar navbar-modern sticky-top">
-    <div class="container">
-        <a class="navbar-brand" href="/disaster_response/index.php">
-            <i class="bi bi-shield-check me-2"></i>DisasterResponse
-        </a>
-        <div class="d-flex gap-2">
-            <a href="/disaster_response/modules/incidents/report.php" class="btn btn-outline-secondary btn-sm rounded-pill">
-                <i class="bi bi-speedometer2 me-1"></i>Dashboard
-            </a>
-            <a href="report.php" class="btn btn-outline-danger btn-sm rounded-pill">
-                <i class="bi bi-plus-circle me-1"></i>New Report
-            </a>
-            <a href="/disaster_response/modules/auth/logout.php" class="btn btn-outline-danger btn-sm rounded-pill">
-                <i class="bi bi-box-arrow-right me-1"></i>Logout
-            </a>
-        </div>
+<!-- ─── NAV ─── -->
+<nav class="nav">
+    <a href="/disaster_response/index.php" class="nav-brand"><i class="fas fa-hands-helping"></i><span>Disaster</span>Response</a>
+    <div class="nav-right">
+        <a href="/disaster_response/modules/incidents/report.php" class="nav-pill">Dashboard</a>
+        <a href="report.php" class="nav-pill primary"><i class="fas fa-plus" style="font-size:0.65rem;"></i> New Report</a>
+        <a href="/disaster_response/modules/auth/logout.php" class="nav-pill">Logout</a>
     </div>
 </nav>
 
+<!-- ─── PAGE HEADER ─── -->
 <div class="page-header">
-    <div class="container">
-        <div class="row align-items-center">
-            <div class="col-md-8">
-                <h1 class="fw-bold mb-2">
-                    <i class="bi bi-clock-history me-2"></i>My Reports
-                </h1>
-                <p class="mb-0 opacity-75">Track the status of your emergency reports</p>
-            </div>
-            <div class="col-md-4 text-end">
-                <i class="bi bi-journal-bookmark-fill" style="font-size: 3rem; opacity: 0.3;"></i>
-            </div>
+    <div class="page-header-inner">
+        <div>
+            <div class="eyebrow">// <?= htmlspecialchars($_SESSION['full_name']) ?></div>
+            <h1 class="page-title">MY REPORTS</h1>
+            <p class="page-sub">Track the status of every emergency you've reported</p>
         </div>
+        <div style="font-family:var(--mono);font-size:0.62rem;color:var(--muted);letter-spacing:0.12em;"><?= strtoupper(date('D, M j Y')) ?></div>
     </div>
 </div>
 
-<div class="container pb-5">
-    
-    <!-- Success/Error Messages -->
+<div class="page">
+
+    <!-- ─── TOASTS ─── -->
     <?php if ($update_success): ?>
-        <div class="alert alert-success alert-dismissible fade show" role="alert">
-            <i class="bi bi-check-circle-fill me-2"></i><?= htmlspecialchars($update_success) ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
+    <div class="toast-bar toast-success reveal" id="toastSuccess">
+        <i class="fas fa-check-circle"></i><?= htmlspecialchars($update_success) ?>
+        <button onclick="this.parentElement.remove()" title="Dismiss">&times;</button>
+    </div>
     <?php endif; ?>
-    
     <?php if ($update_error): ?>
-        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-            <i class="bi bi-exclamation-triangle-fill me-2"></i><?= htmlspecialchars($update_error) ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
+    <div class="toast-bar toast-error reveal" id="toastError">
+        <i class="fas fa-exclamation-circle"></i><?= htmlspecialchars($update_error) ?>
+        <button onclick="this.parentElement.remove()" title="Dismiss">&times;</button>
+    </div>
     <?php endif; ?>
-    
+
     <?php if (empty($my_reports)): ?>
-        <div class="empty-state">
-            <i class="bi bi-inbox"></i>
-            <h5 class="mb-2">No reports yet</h5>
-            <p class="text-muted mb-3">You haven't submitted any emergency reports.</p>
-            <a href="report.php" class="btn btn-danger rounded-pill">
-                <i class="bi bi-plus-circle me-2"></i>Report an Emergency
-            </a>
-        </div>
+
+    <!-- ─── EMPTY STATE ─── -->
+    <div class="empty-state reveal">
+        <i class="fas fa-inbox"></i>
+        <h3>NO REPORTS YET</h3>
+        <p>You haven't submitted any emergency reports. If you're witnessing an emergency, report it now.</p>
+        <a href="report.php" class="rc-btn rc-btn-red" style="display:inline-flex;">
+            <i class="fas fa-exclamation-triangle"></i> Report an Emergency
+        </a>
+    </div>
+
     <?php else: ?>
-        
-        <!-- Report Cards -->
-        <?php foreach ($my_reports as $report): 
-            $severity = getSeverityLabel($report['severity']);
-            $can_cancel = in_array($report['status'], ['reported', 'acknowledged']);
-            $has_updates = isset($incident_updates[$report['id']]);
-        ?>
-            <div class="report-card">
-                <div class="card-header-custom">
-                    <div class="d-flex align-items-center gap-3 flex-wrap">
-                        <span class="incident-id">
-                            <i class="bi bi-hash"></i>INC-<?= str_pad($report['id'], 5, '0', STR_PAD_LEFT) ?>
-                        </span>
-                        <span class="severity-badge" style="background: <?= $severity['color'] ?>20; color: <?= $severity['color'] ?>; border: 1px solid <?= $severity['color'] ?>40;">
-                            <?= $severity['icon'] ?> <?= $severity['label'] ?> Severity
-                        </span>
-                        <span class="status-badge status-<?= $report['status'] ?>">
-                            <?= $report['status_display'] ?>
-                        </span>
-                    </div>
-                    <div class="d-flex gap-2">
-                        <?php if ($can_cancel): ?>
-                            <a href="?cancel=<?= $report['id'] ?>" 
-                               class="btn-outline-danger-custom"
-                               onclick="return confirm('Are you sure you want to cancel this report?');">
-                                <i class="bi bi-x-circle me-1"></i>Cancel
-                            </a>
-                        <?php endif; ?>
-                        <a href="view.php?id=<?= $report['id'] ?>" class="btn-outline-danger-custom">
-                            <i class="bi bi-eye me-1"></i>View Details
-                        </a>
-                    </div>
-                </div>
-                
-                <div class="card-body p-4">
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="text-muted small fw-semibold">Incident Type</label>
-                            <p class="mb-0 fw-medium"><?= ucfirst(str_replace('_', ' ', $report['incident_type'])) ?></p>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="text-muted small fw-semibold">Location</label>
-                            <p class="mb-0 fw-medium"><?= htmlspecialchars($report['location_name'] ?? 'Location provided') ?></p>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="text-muted small fw-semibold">Reported On</label>
-                            <p class="mb-0 fw-medium"><?= date('F j, Y \a\t g:i A', strtotime($report['reported_at'])) ?></p>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="text-muted small fw-semibold">Last Updated</label>
-                            <p class="mb-0 fw-medium"><?= date('F j, Y \a\t g:i A', strtotime($report['updated_at'] ?? $report['reported_at'])) ?></p>
-                        </div>
-                        <div class="col-12 mb-3">
-                            <label class="text-muted small fw-semibold">Description</label>
-                            <p class="mb-0 small"><?= nl2br(htmlspecialchars($report['description'])) ?></p>
-                        </div>
-                        <div class="col-12">
-                            <label class="text-muted small fw-semibold mb-2">Status Progress</label>
-                            <div class="progress">
-                                <div class="progress-bar <?= $report['progress_class'] ?>" 
-                                     role="progressbar" 
-                                     style="width: <?= $report['progress_percent'] ?>%;"
-                                     aria-valuenow="<?= $report['progress_percent'] ?>" 
-                                     aria-valuemin="0" 
-                                     aria-valuemax="100">
-                                </div>
-                            </div>
-                            <div class="d-flex justify-content-between mt-1">
-                                <small class="text-muted">Reported</small>
-                                <small class="text-muted">Under Review</small>
-                                <small class="text-muted">Responders En Route</small>
-                                <small class="text-muted">Resolved</small>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Incident Updates Section -->
-                    <div class="mt-4 pt-3 border-top">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <label class="text-muted small fw-semibold">
-                                <i class="bi bi-chat-dots me-1"></i>Updates & Timeline
-                            </label>
-                            <button class="btn btn-sm btn-link text-decoration-none text-danger" 
-                                    type="button" 
-                                    data-bs-toggle="collapse" 
-                                    data-bs-target="#updateForm-<?= $report['id'] ?>">
-                                <i class="bi bi-plus-circle"></i> Add Update
-                            </button>
-                        </div>
-                        
-                        <!-- Add Update Form -->
-                        <div class="collapse mb-3" id="updateForm-<?= $report['id'] ?>">
-                            <form method="POST" class="bg-light p-3 rounded">
-                                <input type="hidden" name="action" value="add_update">
-                                <input type="hidden" name="incident_id" value="<?= $report['id'] ?>">
-                                <div class="mb-2">
-                                    <textarea name="additional_info" 
-                                              class="form-control" 
-                                              rows="2" 
-                                              placeholder="Provide additional information about this incident..."></textarea>
-                                </div>
-                                <button type="submit" class="btn btn-danger btn-sm rounded-pill">
-                                    <i class="bi bi-send me-1"></i>Submit Update
-                                </button>
-                            </form>
-                        </div>
-                        
-                        <!-- Existing Updates -->
-                        <?php if ($has_updates): ?>
-                            <div class="updates-list">
-                                <?php foreach ($incident_updates[$report['id']] as $update): ?>
-                                    <div class="update-item">
-                                        <div class="d-flex justify-content-between align-items-start">
-                                            <div class="d-flex align-items-center gap-2">
-                                                <i class="bi bi-person-circle text-muted"></i>
-                                                <strong class="small"><?= htmlspecialchars($update['user_name']) ?></strong>
-                                            </div>
-                                            <small class="text-muted"><?= date('M j, g:i A', strtotime($update['created_at'])) ?></small>
-                                        </div>
-                                        <p class="mb-0 small mt-1"><?= nl2br(htmlspecialchars($update['update_text'])) ?></p>
-                                    </div>
-                                <?php endforeach; ?>
-                            </div>
-                        <?php else: ?>
-                            <div class="text-center text-muted small py-2">
-                                <i class="bi bi-chat"></i> No updates yet
-                            </div>
-                        <?php endif; ?>
-                    </div>
-                </div>
+
+    <!-- ─── STATS ─── -->
+    <div class="stats-row reveal">
+        <div class="stat-block s-total">
+            <div class="stat-label">Total Reports</div>
+            <div class="stat-value c-blue"><?= $total ?></div>
+        </div>
+        <div class="stat-block s-active">
+            <div class="stat-label">Active</div>
+            <div class="stat-value c-red"><?= $active ?></div>
+        </div>
+        <div class="stat-block s-done">
+            <div class="stat-label">Resolved</div>
+            <div class="stat-value c-green"><?= $resolved ?></div>
+        </div>
+        <div class="stat-block s-pending">
+            <div class="stat-label">Awaiting Response</div>
+            <div class="stat-value c-amber"><?= $pending ?></div>
+        </div>
+    </div>
+
+    <!-- ─── REPORT CARDS ─── -->
+    <?php foreach ($my_reports as $report):
+        $sev        = getSev((int)$report['severity']);
+        $stMeta     = statusMeta($report['status']);
+        $canCancel  = in_array($report['status'], ['reported', 'acknowledged']);
+        $hasUpdates = !empty($incident_updates[$report['id']]);
+        $pct        = (int)$report['progress_percent'];
+        $pColor     = progressColor($report['status']);
+        $ico        = incidentIcon($report['incident_type']);
+        $formId     = 'updateForm-' . $report['id'];
+    ?>
+    <div class="report-card reveal">
+
+        <!-- HEAD -->
+        <div class="rc-head">
+            <div class="rc-head-left">
+                <span class="report-id">INC-<?= str_pad($report['id'], 5, '0', STR_PAD_LEFT) ?></span>
+                <span class="sev-pip" style="background:<?= $sev['dim'] ?>;color:<?= $sev['color'] ?>;border-color:<?= $sev['border'] ?>;"><?= $sev['label'] ?></span>
+                <span class="status-pip" style="background:<?= $stMeta['dim'] ?>;color:<?= $stMeta['color'] ?>;border-color:<?= $stMeta['border'] ?>;"><?= $stMeta['label'] ?></span>
             </div>
-        <?php endforeach; ?>
-        
-        <!-- Summary Stats -->
-        <div class="row mt-4">
-            <div class="col-12">
-                <div class="bg-white rounded-3 p-3 text-center">
-                    <p class="mb-0 text-muted small">
-                        <i class="bi bi-info-circle me-1"></i>
-                        Need help? Contact our emergency coordination center at 
-                        <strong>999</strong> or <strong>112</strong>
-                    </p>
-                </div>
+            <div class="rc-head-right">
+                <?php if ($canCancel): ?>
+                <a href="?cancel=<?= $report['id'] ?>" class="rc-btn rc-btn-red"
+                   onclick="return confirm('Cancel this report? This cannot be undone.')">
+                    <i class="fas fa-xmark"></i> Cancel
+                </a>
+                <?php endif; ?>
+                <a href="view.php?id=<?= $report['id'] ?>" class="rc-btn rc-btn-ghost">
+                    <i class="fas fa-arrow-up-right"></i> View
+                </a>
             </div>
         </div>
-        
+
+        <!-- BODY -->
+        <div class="rc-body">
+            <div class="rc-icon"><?= $ico ?></div>
+            <div class="rc-type"><?= ucfirst(str_replace('_', ' ', $report['incident_type'])) ?></div>
+
+            <div class="rc-meta-grid">
+                <div class="meta-item">
+                    <div class="meta-label">Location</div>
+                    <div class="meta-val"><?= htmlspecialchars($report['location_name'] ?? 'GPS coordinates captured') ?></div>
+                </div>
+                <div class="meta-item">
+                    <div class="meta-label">Reported</div>
+                    <div class="meta-val"><?= date('M j, Y · g:i A', strtotime($report['reported_at'])) ?></div>
+                </div>
+                <div class="meta-item">
+                    <div class="meta-label">Last Updated</div>
+                    <div class="meta-val"><?= date('M j, Y · g:i A', strtotime($report['updated_at'] ?? $report['reported_at'])) ?></div>
+                </div>
+                <div class="meta-item meta-desc">
+                    <div class="meta-label">Description</div>
+                    <div class="meta-val" style="line-height:1.65;"><?= nl2br(htmlspecialchars(substr($report['description'], 0, 240))) ?><?= strlen($report['description']) > 240 ? '…' : '' ?></div>
+                </div>
+            </div>
+
+            <!-- PROGRESS -->
+            <div class="progress-section">
+                <div class="progress-header">
+                    <div class="progress-label">Response Progress</div>
+                    <div class="progress-pct"><?= $pct ?>%</div>
+                </div>
+                <div class="progress-track">
+                    <div class="progress-fill" style="width:<?= $pct ?>%;background:<?= $pColor ?>;"></div>
+                </div>
+                <div class="progress-steps">
+                    <?php foreach (['Received', 'Reviewing', 'En Route', 'Resolved'] as $step): ?>
+                    <div class="step-label"><?= $step ?></div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+
+            <!-- UPDATES -->
+            <div class="updates-section">
+                <div class="updates-header">
+                    <div class="updates-title">
+                        <i class="fas fa-comments" style="color:var(--red);"></i>
+                        Updates
+                        <?php if ($hasUpdates): ?>
+                        <span style="font-family:var(--heading);font-size:1rem;color:var(--red);"><?= count($incident_updates[$report['id']]) ?></span>
+                        <?php endif; ?>
+                    </div>
+                    <button class="toggle-update-btn" onclick="toggleForm('<?= $formId ?>', this)">
+                        <i class="fas fa-plus" id="icon-<?= $formId ?>"></i> Add Update
+                    </button>
+                </div>
+
+                <!-- FORM -->
+                <div class="update-form" id="<?= $formId ?>">
+                    <div class="update-form-inner">
+                        <form method="POST">
+                            <input type="hidden" name="action" value="add_update">
+                            <input type="hidden" name="incident_id" value="<?= $report['id'] ?>">
+                            <textarea name="additional_info" class="update-textarea"
+                                      placeholder="Provide additional information — e.g. situation worsened, people still trapped, updated count…" required></textarea>
+                            <button type="submit" class="rc-btn rc-btn-red" style="font-size:0.75rem;">
+                                <i class="fas fa-paper-plane"></i> Submit Update
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- EXISTING UPDATES -->
+                <?php if ($hasUpdates): ?>
+                <div class="updates-list">
+                    <?php foreach ($incident_updates[$report['id']] as $upd): ?>
+                    <div class="update-item">
+                        <div class="update-avatar"><?= strtoupper(substr($upd['user_name'], 0, 1)) ?></div>
+                        <div class="update-body">
+                            <div class="update-meta">
+                                <span class="update-name"><?= htmlspecialchars($upd['user_name']) ?></span>
+                                <span class="update-time"><?= date('M j, g:i A', strtotime($upd['created_at'])) ?></span>
+                            </div>
+                            <div class="update-text"><?= nl2br(htmlspecialchars($upd['update_text'])) ?></div>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <?php else: ?>
+                <div class="no-updates">No updates yet — be the first to add one</div>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+    <?php endforeach; ?>
+
+    <!-- ─── HOTLINE BAR ─── -->
+    <div class="hotline-bar reveal">
+        <i class="fas fa-phone-alt" style="color:var(--red);"></i>
+        Need help? Call <strong>999</strong>
+        <span class="sep"></span>
+        Red Cross: <strong>+254 700 123 456</strong>
+        <span class="sep"></span>
+        Emergency: <strong>112</strong>
+    </div>
+
     <?php endif; ?>
-    
 </div>
 
-<!-- Required for Bootstrap collapse -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-
 <script>
-// Auto-hide alerts after 5 seconds
-document.addEventListener('DOMContentLoaded', function() {
-    setTimeout(function() {
-        const alerts = document.querySelectorAll('.alert');
-        alerts.forEach(function(alert) {
-            const bsAlert = new bootstrap.Alert(alert);
-            bsAlert.close();
+    // ─── REVEAL ───
+    const reveals = document.querySelectorAll('.reveal');
+    const obs = new IntersectionObserver(entries => {
+        entries.forEach((e, i) => {
+            if (e.isIntersecting) {
+                setTimeout(() => e.target.classList.add('in'), i * 65);
+                obs.unobserve(e.target);
+            }
+        });
+    }, { threshold: 0.06 });
+    reveals.forEach(el => obs.observe(el));
+
+    // ─── AUTO-DISMISS TOASTS ───
+    setTimeout(() => {
+        ['toastSuccess','toastError'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) { el.style.opacity = '0'; el.style.transform = 'translateY(-8px)'; el.style.transition = 'all 0.4s'; setTimeout(() => el.remove(), 400); }
         });
     }, 5000);
-});
-</script>
 
+    // ─── UPDATE FORM TOGGLE ───
+    function toggleForm(id, btn) {
+        const form = document.getElementById(id);
+        const icon = document.getElementById('icon-' + id);
+        const isOpen = form.classList.toggle('open');
+        icon.className = isOpen ? 'fas fa-minus' : 'fas fa-plus';
+        btn.style.background = isOpen ? 'rgba(232,39,26,0.22)' : '';
+    }
+</script>
 </body>
 </html>
