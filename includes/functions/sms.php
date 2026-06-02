@@ -14,7 +14,7 @@
 function sendSMS($phone, $message) {
     // Configuration
     $username = 'sandbox';
-    $api_key = 'atsk_dcad2e85e40a26aadef6358c488cbfe302db557ac69372a6a349094678267e5157c75727';
+    $api_key = 'atsk_b59122ea545a590f16cc77b4cf492afdc07a44ccad8e37cbcef8519b0708ea6ea434e551';
     $from = 'DisasterResp';
     
     // Store original phone for logging
@@ -66,7 +66,7 @@ function sendSMS($phone, $message) {
     $message = substr($message, 0, 160);
     
     // Prepare API request
-    $url = 'https://api.africastalking.com/version1/messaging';
+    $url = 'https://api.sandbox.africastalking.com/version1/messaging';
     
     $data = [
         'username' => $username,
@@ -163,13 +163,38 @@ function sendBulkSMS($recipients, $message) {
  * @return array Result of broadcast
  */
 function broadcastAlert($title, $message, $priority, $targetArea, $pdo) {
+    // Get user_id from session or use a default system user
     $user_id = $_SESSION['user_id'] ?? 0;
     
-    // Map priority to alert_type (your table uses alert_type for priority)
+    // If user_id is 0 or doesn't exist, find a valid admin user
+    if ($user_id == 0) {
+        $stmt = $pdo->prepare("SELECT id FROM users WHERE role = 'admin' OR role = 'administrator' LIMIT 1");
+        $stmt->execute();
+        $admin = $stmt->fetch();
+        if ($admin) {
+            $user_id = $admin['id'];
+        } else {
+            // If no admin, get the first user
+            $stmt = $pdo->prepare("SELECT id FROM users LIMIT 1");
+            $stmt->execute();
+            $first_user = $stmt->fetch();
+            if ($first_user) {
+                $user_id = $first_user['id'];
+            } else {
+                return [
+                    'success' => false,
+                    'error' => 'No users found in database to assign as creator',
+                    'alert_id' => null
+                ];
+            }
+        }
+    }
+    
+    // Map priority to alert_type
     $valid_alert_types = ['danger', 'warning', 'evacuation', 'shelter', 'info'];
     $alert_type = in_array($priority, $valid_alert_types) ? $priority : 'warning';
     
-    // Handle affected area bounds (for geographic targeting)
+    // Handle affected area bounds
     $lat_min = null;
     $lat_max = null;
     $lon_min = null;
@@ -181,7 +206,6 @@ function broadcastAlert($title, $message, $priority, $targetArea, $pdo) {
         $lon_min = $targetArea['bounds']['lon_min'] ?? null;
         $lon_max = $targetArea['bounds']['lon_max'] ?? null;
     } elseif (isset($targetArea['lat']) && isset($targetArea['lng'])) {
-        // Create a small bounding box around the point (approximately 10km)
         $lat = $targetArea['lat'];
         $lng = $targetArea['lng'];
         $lat_min = $lat - 0.05;
@@ -191,7 +215,18 @@ function broadcastAlert($title, $message, $priority, $targetArea, $pdo) {
     }
     
     try {
-        // Insert into alerts table using your actual column structure
+        // First, check if the created_by user exists
+        $stmt = $pdo->prepare("SELECT id FROM users WHERE id = ?");
+        $stmt->execute([$user_id]);
+        if ($stmt->rowCount() == 0) {
+            return [
+                'success' => false,
+                'error' => "User with ID $user_id does not exist",
+                'alert_id' => null
+            ];
+        }
+        
+        // Insert into alerts table
         $stmt = $pdo->prepare("
             INSERT INTO alerts (
                 alert_type, 
@@ -231,80 +266,32 @@ function broadcastAlert($title, $message, $priority, $targetArea, $pdo) {
         ];
     }
     
-    // Determine which users to notify based on target area
+    // Determine which users to notify
     $users = [];
     $sms_results = [];
     
     try {
-        // Check if we have location bounds
-        $hasBounds = ($lat_min !== null && $lat_max !== null && $lon_min !== null && $lon_max !== null);
-        
         if ($targetArea['type'] === 'all') {
-            // Get all active users with phone numbers
             $stmt = $pdo->prepare("
                 SELECT id, full_name, phone FROM users 
-                WHERE phone IS NOT NULL AND phone != '' AND sms_subscribed = 1
+                WHERE phone IS NOT NULL AND phone != '' AND (sms_subscribed = 1 OR sms_subscribed IS NULL)
             ");
             $stmt->execute();
             $users = $stmt->fetchAll();
             
         } elseif ($targetArea['type'] === 'county') {
-            // Get users in specific county
             $stmt = $pdo->prepare("
                 SELECT id, full_name, phone FROM users 
-                WHERE county = ? AND phone IS NOT NULL AND phone != '' AND sms_subscribed = 1
+                WHERE county = ? AND phone IS NOT NULL AND phone != '' AND (sms_subscribed = 1 OR sms_subscribed IS NULL)
             ");
             $stmt->execute([$targetArea['county']]);
             $users = $stmt->fetchAll();
             
-        } elseif ($targetArea['type'] === 'radius' && isset($targetArea['lat']) && isset($targetArea['lng'])) {
-            // Get users within radius
-            $radius = $targetArea['radius'] ?? 10;
-            $lat = $targetArea['lat'];
-            $lng = $targetArea['lng'];
-            
-            // Check if users table has latitude/longitude columns
-            $stmt = $pdo->prepare("SHOW COLUMNS FROM users LIKE 'latitude'");
-            $stmt->execute();
-            $hasLocation = $stmt->rowCount() > 0;
-            
-            if ($hasLocation) {
-                $stmt = $pdo->prepare("
-                    SELECT id, full_name, phone, 
-                    (6371 * acos(cos(radians(?)) * cos(radians(latitude)) * cos(radians(longitude) - radians(?)) + sin(radians(?)) * sin(radians(latitude)))) AS distance
-                    FROM users 
-                    WHERE phone IS NOT NULL AND phone != '' AND sms_subscribed = 1
-                    HAVING distance < ?
-                    ORDER BY distance
-                ");
-                $stmt->execute([$lat, $lng, $lat, $radius]);
-                $users = $stmt->fetchAll();
-            } else {
-                // Fallback to all users if location data not available
-                $stmt = $pdo->prepare("
-                    SELECT id, full_name, phone FROM users 
-                    WHERE phone IS NOT NULL AND phone != '' AND sms_subscribed = 1
-                ");
-                $stmt->execute();
-                $users = $stmt->fetchAll();
-            }
-            
-        } elseif ($hasBounds) {
-            // Get users within the bounding box
-            $stmt = $pdo->prepare("
-                SELECT id, full_name, phone FROM users 
-                WHERE phone IS NOT NULL AND phone != '' AND sms_subscribed = 1
-                AND latitude BETWEEN ? AND ?
-                AND longitude BETWEEN ? AND ?
-            ");
-            $stmt->execute([$lat_min, $lat_max, $lon_min, $lon_max]);
-            $users = $stmt->fetchAll();
-            
         } else {
-            // Default to all users if no specific targeting
+            // Default to all users
             $stmt = $pdo->prepare("
                 SELECT id, full_name, phone FROM users 
-                WHERE phone IS NOT NULL AND phone != '' AND sms_subscribed = 1
+                WHERE phone IS NOT NULL AND phone != '' AND (sms_subscribed = 1 OR sms_subscribed IS NULL)
             ");
             $stmt->execute();
             $users = $stmt->fetchAll();
@@ -326,11 +313,8 @@ function broadcastAlert($title, $message, $priority, $targetArea, $pdo) {
     
     foreach ($users as $user) {
         if (!empty($user['phone'])) {
-            // Format the phone number before sending
-            $formatted_phone = $user['phone'];
-            
-            // Remove any non-digit characters
-            $formatted_phone = preg_replace('/[^0-9]/', '', $formatted_phone);
+            // Format the phone number
+            $formatted_phone = preg_replace('/[^0-9]/', '', $user['phone']);
             
             // Format to 254 format
             if (strlen($formatted_phone) == 10 && substr($formatted_phone, 0, 1) == '0') {
@@ -341,18 +325,30 @@ function broadcastAlert($title, $message, $priority, $targetArea, $pdo) {
                 $formatted_phone = substr($formatted_phone, 1);
             }
             
-            $result = sendSMS($formatted_phone, $alert_message);
-            
-            if ($result['success']) {
-                $sms_sent++;
+            // Only send if phone number is valid (12 digits starting with 254)
+            if (strlen($formatted_phone) == 12 && substr($formatted_phone, 0, 3) == '254') {
+                $result = sendSMS($formatted_phone, $alert_message);
+                
+                if ($result['success']) {
+                    $sms_sent++;
+                } else {
+                    $sms_failed++;
+                    $log_dir = __DIR__ . '/../../logs';
+                    if (!is_dir($log_dir)) {
+                        mkdir($log_dir, 0777, true);
+                    }
+                    file_put_contents($log_dir . '/failed_sms.log', date('Y-m-d H:i:s') . " - User: {$user['id']}, Phone: {$user['phone']}, Formatted: $formatted_phone, Error: {$result['message']}\n", FILE_APPEND);
+                }
+                
+                $sms_results[] = $result;
             } else {
                 $sms_failed++;
-                // Log failed SMS details
-                $log_dir = __DIR__ . '/../../logs';
-                file_put_contents($log_dir . '/failed_sms.log', date('Y-m-d H:i:s') . " - User: {$user['id']}, Phone: {$user['phone']}, Error: {$result['message']}\n", FILE_APPEND);
+                $sms_results[] = [
+                    'success' => false,
+                    'message' => "Invalid phone number format after formatting: $formatted_phone",
+                    'data' => null
+                ];
             }
-            
-            $sms_results[] = $result;
         }
     }
     
@@ -374,9 +370,9 @@ function broadcastAlert($title, $message, $priority, $targetArea, $pdo) {
  */
 function checkSMSBalance() {
     $username = 'sandbox';
-    $api_key = 'atsk_dcad2e85e40a26aadef6358c488cbfe302db557ac69372a6a349094678267e5157c75727';
+    $api_key = 'atsk_b59122ea545a590f16cc77b4cf492afdc07a44ccad8e37cbcef8519b0708ea6ea434e551';
     
-    $url = 'https://api.africastalking.com/version1/user';
+    $url = 'https://api.sandbox.africastalking.com/version1/user';
     
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
