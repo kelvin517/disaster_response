@@ -61,6 +61,15 @@ if (!function_exists('hasRole')) {
     }
 }
 
+// ============================================
+// SMS Configuration (Africa's Talking)
+// ============================================
+
+// Africa's Talking API Credentials
+define('SMS_USERNAME', 'sandbox'); // Replace with your username
+define('SMS_API_KEY', 'atsk_dcad2e85e40a26aadef6358c488cbfe302db557ac69372a6a349094678267e5157c75727'); // Replace with your API key
+define('SMS_SENDER_ID', 'DisasterResp'); // Max 11 characters
+define('SMS_ENVIRONMENT', 'sandbox'); // 'sandbox' or 'production'
 // NOTE: requireLogin() and requireRole() are defined in includes/functions/auth.php
 // Do NOT define them here to avoid redeclaration error
 ?>
