@@ -15,7 +15,6 @@ $sandbox_api_key = 'atsk_b59122ea545a590f16cc77b4cf492afdc07a44ccad8e37cbcef8519
 $username = 'sandbox'; // Must be exactly 'sandbox' for sandbox
 $phone = '254792460351';
 $message = 'Test message from Disaster Response System';
-$from = 'INFO';
 
 // Critical: Use the sandbox subdomain
 $url = 'https://api.sandbox.africastalking.com/version1/messaging';
@@ -28,8 +27,7 @@ echo "API Key (first 10 chars): " . substr($sandbox_api_key, 0, 10) . "...\n\n";
 $data = [
     'username' => $username,
     'to' => $phone,
-    'message' => $message,
-    'from' => $from
+    'message' => $message
 ];
 
 $ch = curl_init();

@@ -15,7 +15,7 @@ function sendSMS($phone, $message) {
     // Configuration
     $username = 'sandbox';
     $api_key = 'atsk_b59122ea545a590f16cc77b4cf492afdc07a44ccad8e37cbcef8519b0708ea6ea434e551';
-    $from = 'DisasterResp';
+    $from = 'AFRICASTALK';
     
     // Store original phone for logging
     $original_phone = $phone;

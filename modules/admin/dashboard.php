@@ -1,6 +1,6 @@
 <?php
 /**
- * Admin Dashboard - Complete System Overview
+ * Admin Dashboard - Complete System Overview with SMS Broadcast
  * Disaster Response & Resource Coordination System
  * Author: Kevin Kiplangat | INTE/MK/1299/09/23
  */
@@ -8,6 +8,7 @@
 session_start();
 require_once __DIR__ . '/../../includes/config/config.php';
 require_once __DIR__ . '/../../includes/functions/auth.php';
+require_once __DIR__ . '/../../includes/functions/sms.php';
 
 if (!class_exists('Logger')) {
     require_once __DIR__ . '/../../includes/Logger.php';
@@ -31,7 +32,7 @@ $zone_stats = $stmt->fetch();
 $stmt = $pdo->query("SELECT COUNT(*) as total_shelters, SUM(capacity) as total_capacity, SUM(current_occupancy) as total_occupancy FROM shelters WHERE status='active'");
 $shelter_stats = $stmt->fetch();
 
-$stmt = $pdo->query("SELECT COUNT(*) as total_users, SUM(CASE WHEN role='admin' THEN 1 ELSE 0 END) as admins, SUM(CASE WHEN role='responder' THEN 1 ELSE 0 END) as responders, SUM(CASE WHEN role='volunteer' THEN 1 ELSE 0 END) as volunteers, SUM(CASE WHEN is_active=1 THEN 1 ELSE 0 END) as active_users FROM users");
+$stmt = $pdo->query("SELECT COUNT(*) as total_users, SUM(CASE WHEN role='admin' THEN 1 ELSE 0 END) as admins, SUM(CASE WHEN role='responder' THEN 1 ELSE 0 END) as responders, SUM(CASE WHEN role='volunteer' THEN 1 ELSE 0 END) as volunteers, SUM(CASE WHEN is_active=1 THEN 1 ELSE 0 END) as active_users, SUM(CASE WHEN sms_subscribed=1 THEN 1 ELSE 0 END) as sms_subscribed FROM users");
 $user_stats = $stmt->fetch();
 
 $stmt = $pdo->query("SELECT COUNT(DISTINCT resource_type) as resource_types, SUM(quantity) as total_units, SUM(CASE WHEN status='available' THEN quantity ELSE 0 END) as available_units FROM resources");
@@ -61,7 +62,7 @@ $stmt = $pdo->prepare("SELECT i.*, u.full_name as reporter_name FROM incidents i
 $stmt->execute();
 $recent_incidents = $stmt->fetchAll();
 
-$stmt = $pdo->prepare("SELECT id, full_name, email, role, is_active, created_at FROM users ORDER BY created_at DESC LIMIT 5");
+$stmt = $pdo->prepare("SELECT id, full_name, email, role, is_active, created_at, phone, sms_subscribed FROM users ORDER BY created_at DESC LIMIT 5");
 $stmt->execute();
 $recent_users = $stmt->fetchAll();
 
@@ -77,6 +78,9 @@ $shelter_occupancy = ($shelter_stats['total_capacity'] ?? 0) > 0 ? round(($shelt
 $completion_rate = ($incident_stats['total_incidents'] ?? 0) > 0 ? round(($incident_stats['resolved'] / $incident_stats['total_incidents']) * 100) : 0;
 $php_version = phpversion();
 $db_size = $pdo->query("SELECT ROUND(SUM(data_length + index_length)/1024/1024,2) as size FROM information_schema.tables WHERE table_schema=DATABASE()")->fetch()['size'];
+
+// Get SMS credit balance
+$sms_balance = checkSMSBalance();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -90,46 +94,35 @@ $db_size = $pdo->query("SELECT ROUND(SUM(data_length + index_length)/1024/1024,2
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-/* ═══ DESIGN SYSTEM ═══════════════════════════════════════════ */
 :root {
   --bg:        #f0f2f5;
   --surface:   #ffffff;
   --surface-2: #f7f8fa;
   --border:    #e2e5ea;
   --border-2:  #d0d4db;
-
   --navy:      #0f1b2d;
   --navy-2:    #1a2b42;
   --navy-3:    #243550;
-
   --red:       #e8271d;
   --red-light: #fff0ef;
   --red-mid:   #ffc9c6;
-
   --amber:     #d97706;
   --amber-light:#fffbeb;
-
   --blue:      #1d6ef5;
   --blue-light:#eff5ff;
-
   --green:     #16a34a;
   --green-light:#f0fdf4;
-
   --teal:      #0891b2;
   --teal-light:#ecfeff;
-
   --purple:    #7c3aed;
   --purple-light:#f5f3ff;
-
   --text:      #0f1b2d;
   --text-2:    #374151;
   --muted:     #6b7280;
   --muted-2:   #9ca3af;
-
   --ff-head: 'Barlow Condensed', sans-serif;
   --ff-body: 'Barlow', sans-serif;
   --ff-mono: 'IBM Plex Mono', monospace;
-
   --r: 8px;
   --r-lg: 12px;
   --shadow: 0 1px 3px rgba(15,27,45,.08), 0 4px 16px rgba(15,27,45,.06);
@@ -151,7 +144,6 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 4px; }
 
-/* ═══ TOPBAR ══════════════════════════════════════════════════ */
 .topbar {
   background: var(--navy);
   padding: 0;
@@ -238,10 +230,8 @@ body {
 }
 .logout-btn:hover { background: var(--red); color: #fff; border-color: var(--red); }
 
-/* ═══ PAGE ════════════════════════════════════════════════════ */
 .page { max-width: 1480px; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
 
-/* ═══ HERO ════════════════════════════════════════════════════ */
 .hero {
   background: var(--navy);
   border-radius: var(--r-lg);
@@ -315,7 +305,6 @@ body {
   color: rgba(255,255,255,.45); margin-top: 2px;
 }
 
-/* ═══ SECTION LABEL ═══════════════════════════════════════════ */
 .sec-label {
   display: flex; align-items: center; gap: .6rem;
   margin-bottom: .85rem;
@@ -333,7 +322,6 @@ body {
 }
 .sec-line { flex: 1; height: 1px; background: var(--border); }
 
-/* ═══ STAT TILES ══════════════════════════════════════════════ */
 .tiles-scroll {
   overflow-x: auto;
   padding-bottom: .5rem;
@@ -401,7 +389,6 @@ body {
   margin-top: .2rem; line-height: 1.3;
 }
 
-/* ═══ PERF METRICS ═══════════════════════════════════════════ */
 .perf-row {
   display: flex; gap: .75rem; flex-wrap: wrap; margin-bottom: 1.5rem;
 }
@@ -427,7 +414,6 @@ body {
 .perf-bar { height: 5px; border-radius: 4px; background: var(--bg); margin-top: .5rem; overflow: hidden; }
 .perf-fill { height: 100%; border-radius: 4px; transition: width .5s ease; }
 
-/* ═══ CARDS ═══════════════════════════════════════════════════ */
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -464,7 +450,6 @@ body {
 }
 .card-link:hover { background: var(--blue); color: #fff; border-color: var(--blue); }
 
-/* ═══ INCIDENT ROWS ═══════════════════════════════════════════ */
 .inc-row {
   padding: .85rem 1.25rem;
   border-bottom: 1px solid var(--border);
@@ -489,7 +474,6 @@ body {
 }
 .inc-badges { display: flex; flex-direction: column; align-items: flex-end; gap: .3rem; flex-shrink: 0; }
 
-/* Severity/Status badges */
 .badge {
   padding: .22rem .65rem; border-radius: 4px;
   font-size: .63rem; font-weight: 700;
@@ -506,7 +490,6 @@ body {
 .b-resolved     { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
 .b-cancelled    { background: #f9fafb; color: #6b7280; border: 1px solid #e5e7eb; }
 
-/* ═══ GRID LAYOUT ═════════════════════════════════════════════ */
 .main-grid {
   display: grid;
   grid-template-columns: 1fr 1fr 290px;
@@ -515,8 +498,7 @@ body {
   margin-bottom: 1.25rem;
 }
 
-/* ═══ QUICK ACTIONS ═══════════════════════════════════════════ */
-.qa-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .6rem; padding: .9rem; }
+.qa-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .6rem; padding: .9rem; }
 .qa-btn {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: .35rem; padding: .85rem .4rem;
@@ -527,6 +509,7 @@ body {
   transition: all var(--ease);
   position: relative; overflow: hidden;
   min-height: 74px;
+  cursor: pointer;
 }
 .qa-btn:hover { background: var(--navy); border-color: var(--navy); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(15,27,45,.15); }
 .qa-btn i { font-size: 1.2rem; color: var(--navy); transition: color var(--ease); }
@@ -534,7 +517,14 @@ body {
 .qa-btn span { font-size: .62rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .09em; text-align: center; transition: color var(--ease); }
 .qa-btn:hover span { color: rgba(255,255,255,.75); }
 
-/* Alert display */
+.sms-btn {
+  background: linear-gradient(135deg, var(--red) 0%, #c8231a 100%);
+  border-color: var(--red);
+}
+.sms-btn i { color: white !important; }
+.sms-btn span { color: white !important; }
+.sms-btn:hover { background: #c8231a; border-color: #c8231a; transform: translateY(-2px); }
+
 .alert-display {
   padding: 1.5rem 1rem; text-align: center;
 }
@@ -545,7 +535,6 @@ body {
 }
 .alert-lbl { font-size: .7rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .12em; margin-top: .3rem; }
 
-/* ═══ SHELTER BAR ═════════════════════════════════════════════ */
 .shelter-card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -570,7 +559,6 @@ body {
 .shelter-meta { display: flex; justify-content: space-between; margin-top: .5rem; }
 .shelter-stat { font-family: var(--ff-mono); font-size: .7rem; color: var(--muted); }
 
-/* ═══ USERS TABLE ═════════════════════════════════════════════ */
 .tbl { width: 100%; border-collapse: collapse; }
 .tbl thead tr { background: var(--surface-2); }
 .tbl thead th {
@@ -604,16 +592,62 @@ body {
 .dot-on  { background: var(--green); box-shadow: 0 0 5px rgba(22,163,74,.5); }
 .dot-off { background: var(--muted-2); }
 
-/* ═══ CHART ═══════════════════════════════════════════════════ */
 .chart-pad { padding: 1.1rem 1.25rem; }
 
-/* ═══ EMPTY STATE ═════════════════════════════════════════════ */
 .empty { text-align: center; padding: 2.5rem 1rem; color: var(--muted-2); }
 .empty i { font-size: 2rem; display: block; margin-bottom: .5rem; opacity: .35; }
 
+/* SMS Modal Styling */
+.sms-modal-header {
+  background: linear-gradient(135deg, var(--red) 0%, #c8231a 100%);
+  border-bottom: none;
+}
+.sms-preview {
+  background: var(--surface-2);
+  border-radius: var(--r);
+  padding: 1rem;
+  border-left: 3px solid var(--red);
+}
+.sms-preview-message {
+  font-family: var(--ff-mono);
+  font-size: .85rem;
+  background: #fff;
+  padding: .75rem;
+  border-radius: var(--r);
+  white-space: pre-wrap;
+}
+.character-counter {
+  font-family: var(--ff-mono);
+  font-size: .7rem;
+}
+.character-counter.warning {
+  color: var(--amber);
+}
+.character-counter.danger {
+  color: var(--red);
+}
+.recipient-summary {
+  background: var(--green-light);
+  border: 1px solid #bbf7d0;
+  border-radius: var(--r);
+  padding: .75rem;
+}
+.alert-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .25rem .6rem;
+  border-radius: 20px;
+  font-size: .7rem;
+  font-weight: 600;
+}
+.alert-type-badge i { font-size: .7rem; }
+.alert-danger-badge { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+.alert-warning-badge { background: #fffbeb; color: #d97706; border: 1px solid #fde68a; }
+.alert-info-badge { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
+
 @keyframes fadeUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
 
-/* ═══ RESPONSIVE ══════════════════════════════════════════════ */
 @media (max-width: 1100px) {
   .main-grid { grid-template-columns: 1fr 1fr; }
   .main-grid .col-right { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 1.1rem; }
@@ -625,12 +659,13 @@ body {
   .main-grid .col-right { grid-column: auto; display: block; }
   .brand-text { font-size: 1rem; }
   .perf-row { flex-direction: column; }
+  .qa-grid { grid-template-columns: repeat(2, 1fr); }
 }
 </style>
 </head>
 <body>
 
-<!-- ═══ TOPBAR ════════════════════════════════════════════════ -->
+<!-- TOPBAR -->
 <nav class="topbar">
   <div class="container-fluid px-0">
     <div class="topbar-inner">
@@ -666,7 +701,7 @@ body {
   </div>
 </nav>
 
-<!-- ═══ PAGE ══════════════════════════════════════════════════ -->
+<!-- PAGE -->
 <div class="page">
 
   <!-- HERO -->
@@ -685,7 +720,7 @@ body {
     </div>
   </div>
 
-  <!-- ── INCIDENTS ──────────────────────────────────────────── -->
+  <!-- INCIDENTS -->
   <div class="sec-label">
     <span class="sec-icon" style="background:var(--red-light);color:var(--red)"><i class="bi bi-exclamation-triangle-fill"></i></span>
     <span class="sec-title">Incident Overview</span>
@@ -726,7 +761,7 @@ body {
     </div>
   </div>
 
-  <!-- ── INFRASTRUCTURE ─────────────────────────────────────── -->
+  <!-- INFRASTRUCTURE -->
   <div class="sec-label">
     <span class="sec-icon" style="background:var(--blue-light);color:var(--blue)"><i class="bi bi-buildings-fill"></i></span>
     <span class="sec-title">Infrastructure &amp; Resources</span>
@@ -762,7 +797,7 @@ body {
     </div>
   </div>
 
-  <!-- ── PEOPLE ─────────────────────────────────────────────── -->
+  <!-- PEOPLE -->
   <div class="sec-label">
     <span class="sec-icon" style="background:var(--green-light);color:var(--green)"><i class="bi bi-people-fill"></i></span>
     <span class="sec-title">People &amp; Community</span>
@@ -780,6 +815,11 @@ body {
         <div class="tile-num"><?= number_format($user_stats['active_users'] ?? 0) ?></div>
         <div class="tile-lbl">Active Users</div>
       </div>
+      <div class="tile tile-blue">
+        <div class="tile-icon"><i class="bi bi-envelope-paper-fill"></i></div>
+        <div class="tile-num"><?= number_format($user_stats['sms_subscribed'] ?? 0) ?></div>
+        <div class="tile-lbl">SMS Subscribed</div>
+      </div>
       <div class="tile tile-red">
         <div class="tile-icon"><i class="bi bi-shield-fill"></i></div>
         <div class="tile-num"><?= number_format($user_stats['responders'] ?? 0) ?></div>
@@ -790,15 +830,10 @@ body {
         <div class="tile-num"><?= number_format($volunteer_stats['available_volunteers'] ?? 0) ?></div>
         <div class="tile-lbl">Available Volunteers</div>
       </div>
-      <div class="tile tile-blue">
-        <div class="tile-icon"><i class="bi bi-bell-fill"></i></div>
-        <div class="tile-num"><?= $alert_stats['active_alerts'] ?? 0 ?></div>
-        <div class="tile-lbl">Active Alerts</div>
-      </div>
     </div>
   </div>
 
-  <!-- ── PERFORMANCE ────────────────────────────────────────── -->
+  <!-- PERFORMANCE -->
   <div class="sec-label">
     <span class="sec-icon" style="background:var(--amber-light);color:var(--amber)"><i class="bi bi-speedometer2"></i></span>
     <span class="sec-title">Performance Metrics</span>
@@ -860,7 +895,235 @@ body {
   </div>
   <?php endif; ?>
 
-  <!-- ── 3-COL GRID ──────────────────────────────────────────── -->
+  <!-- SMS Broadcast Modal - Styled Version -->
+  <div class="modal fade" id="smsModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content" style="border-radius: 16px; overflow: hidden;">
+        <div class="modal-header sms-modal-header" style="background: linear-gradient(135deg, var(--red) 0%, #c8231a 100%); color: white; border-bottom: none; padding: 1.25rem 1.5rem;">
+          <div>
+            <h5 class="modal-title fw-bold" style="font-family: var(--ff-head); font-size: 1.3rem;">
+              <i class="bi bi-megaphone-fill me-2"></i>Emergency SMS Broadcast
+            </h5>
+            <p class="small mb-0 mt-1" style="opacity: 0.85;">Send instant alerts to affected communities</p>
+          </div>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <form id="smsBroadcastForm">
+          <div class="modal-body" style="padding: 1.5rem;">
+            <div class="row g-4">
+              <!-- Left Column - Form Fields -->
+              <div class="col-lg-7">
+                <!-- Alert Type Selection -->
+                <div class="mb-4">
+                  <label class="form-label fw-bold mb-2">
+                    <i class="bi bi-tag me-1"></i>Alert Type
+                  </label>
+                  <div class="d-flex flex-wrap gap-2" id="alertTypeGroup">
+                    <div class="form-check form-check-inline">
+                      <input class="form-check-input" type="radio" name="alertTypeRadio" id="alertDanger" value="danger" checked>
+                      <label class="form-check-label" for="alertDanger">
+                        <span class="alert-type-badge alert-danger-badge"><i class="bi bi-exclamation-triangle-fill"></i> DANGER</span>
+                      </label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                      <input class="form-check-input" type="radio" name="alertTypeRadio" id="alertWarning" value="warning">
+                      <label class="form-check-label" for="alertWarning">
+                        <span class="alert-type-badge alert-warning-badge"><i class="bi bi-exclamation-circle-fill"></i> WARNING</span>
+                      </label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                      <input class="form-check-input" type="radio" name="alertTypeRadio" id="alertEvacuation" value="evacuation">
+                      <label class="form-check-label" for="alertEvacuation">
+                        <span class="alert-type-badge alert-danger-badge"><i class="bi bi-arrow-right-circle-fill"></i> EVACUATION</span>
+                      </label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                      <input class="form-check-input" type="radio" name="alertTypeRadio" id="alertShelter" value="shelter">
+                      <label class="form-check-label" for="alertShelter">
+                        <span class="alert-type-badge alert-info-badge"><i class="bi bi-building-fill"></i> SHELTER</span>
+                      </label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                      <input class="form-check-input" type="radio" name="alertTypeRadio" id="alertInfo" value="info">
+                      <label class="form-check-label" for="alertInfo">
+                        <span class="alert-type-badge alert-info-badge"><i class="bi bi-info-circle-fill"></i> INFO</span>
+                      </label>
+                    </div>
+                  </div>
+                  <input type="hidden" id="alertType" name="alert_type" value="danger">
+                </div>
+                
+                <!-- Alert Title -->
+                <div class="mb-3">
+                  <label class="form-label fw-bold">
+                    <i class="bi bi-fonts me-1"></i>Alert Title
+                  </label>
+                  <input type="text" class="form-control form-control-lg" id="alertTitle" required 
+                         placeholder="e.g., Flash Flood Warning - Nairobi Area" maxlength="100">
+                  <small class="text-muted">Clear, concise title (max 100 characters)</small>
+                </div>
+                
+                <!-- Alert Message -->
+                <div class="mb-3">
+                  <label class="form-label fw-bold">
+                    <i class="bi bi-chat-text me-1"></i>Alert Message
+                  </label>
+                  <textarea class="form-control" id="alertMessage" rows="4" required 
+                            placeholder="Describe the situation, provide clear instructions, and include any necessary details..." 
+                            maxlength="160"></textarea>
+                  <div class="d-flex justify-content-between mt-1">
+                    <small class="text-muted">Keep messages under 160 characters for single SMS</small>
+                    <small class="character-counter" id="charCounter">0/160 characters</small>
+                  </div>
+                </div>
+                
+                <!-- Target Audience -->
+                <div class="mb-3">
+                  <label class="form-label fw-bold">
+                    <i class="bi bi-geo-alt me-1"></i>Target Audience
+                  </label>
+                  <select class="form-select" id="targetAudience" required>
+                    <option value="all">📱 All Subscribed Users (<?= number_format($user_stats['sms_subscribed'] ?? 0) ?> recipients)</option>
+                    <option value="county">📍 Specific County</option>
+                    <option value="individual">👤 Individual Phone Number</option>
+                    <option value="affected">⚠️ Only Users in Affected Areas</option>
+                  </select>
+                </div>
+                
+                <!-- County Select (hidden by default) -->
+                <div class="mb-3 d-none" id="countySelectDiv">
+                  <label class="form-label fw-bold">
+                    <i class="bi bi-building me-1"></i>Select County
+                  </label>
+                  <select class="form-select" id="targetCounty">
+                    <option value="">Choose county...</option>
+                    <option value="Nairobi">Nairobi</option>
+                    <option value="Mombasa">Mombasa</option>
+                    <option value="Kisumu">Kisumu</option>
+                    <option value="Nakuru">Nakuru</option>
+                    <option value="Uasin Gishu">Uasin Gishu</option>
+                    <option value="Kiambu">Kiambu</option>
+                    <option value="Machakos">Machakos</option>
+                    <option value="Kajiado">Kajiado</option>
+                    <option value="Meru">Meru</option>
+                    <option value="Kilifi">Kilifi</option>
+                  </select>
+                </div>
+                
+                <!-- Individual Phone Number (hidden by default) -->
+                <div class="mb-3 d-none" id="individualPhoneDiv">
+                  <label class="form-label fw-bold">
+                    <i class="bi bi-phone me-1"></i>Phone Number
+                  </label>
+                  <input type="tel" class="form-control" id="individualPhone" 
+                         placeholder="e.g., 254712345678 or 0712345678">
+                  <small class="text-muted">Format: Kenyan number (e.g., 254712345678 or 0712345678)</small>
+                </div>
+                
+                <!-- Priority -->
+                <div class="mb-3">
+                  <label class="form-label fw-bold">
+                    <i class="bi bi-flag me-1"></i>Priority Level
+                  </label>
+                  <div class="d-flex gap-2">
+                    <div class="form-check">
+                      <input class="form-check-input" type="radio" name="priorityRadio" id="priorityEmergency" value="emergency">
+                      <label class="form-check-label" for="priorityEmergency">
+                        <span class="badge bg-danger">🚨 EMERGENCY</span>
+                      </label>
+                    </div>
+                    <div class="form-check">
+                      <input class="form-check-input" type="radio" name="priorityRadio" id="priorityUrgent" value="urgent">
+                      <label class="form-check-label" for="priorityUrgent">
+                        <span class="badge bg-warning text-dark">⚠️ URGENT</span>
+                      </label>
+                    </div>
+                    <div class="form-check">
+                      <input class="form-check-input" type="radio" name="priorityRadio" id="priorityNormal" value="normal" checked>
+                      <label class="form-check-label" for="priorityNormal">
+                        <span class="badge bg-secondary">📱 NORMAL</span>
+                      </label>
+                    </div>
+                  </div>
+                  <input type="hidden" id="priority" name="priority" value="normal">
+                </div>
+                
+                <div class="form-check mb-3">
+                  <input class="form-check-input" type="checkbox" id="saveToDatabase" checked>
+                  <label class="form-check-label">
+                    <i class="bi bi-database me-1"></i>Save alert to database (for history and audit trail)
+                  </label>
+                </div>
+              </div>
+              
+              <!-- Right Column - Preview & Info -->
+              <div class="col-lg-5">
+                <!-- SMS Preview Card -->
+                <div class="sms-preview mb-3">
+                  <div class="d-flex align-items-center gap-2 mb-2">
+                    <i class="bi bi-eye-fill text-muted"></i>
+                    <span class="small fw-bold text-muted">SMS PREVIEW</span>
+                  </div>
+                  <div class="sms-preview-message" id="smsPreview">
+                    <div class="text-muted small">Select alert type and enter message to preview...</div>
+                  </div>
+                </div>
+                
+                <!-- Recipient Summary -->
+                <div class="recipient-summary mb-3">
+                  <div class="d-flex align-items-center gap-2 mb-2">
+                    <i class="bi bi-people-fill text-success"></i>
+                    <span class="small fw-bold">RECIPIENT SUMMARY</span>
+                  </div>
+                  <div id="recipientInfo">
+                    <div class="d-flex justify-content-between mb-1">
+                      <span>Total Subscribers:</span>
+                      <strong><?= number_format($user_stats['sms_subscribed'] ?? 0) ?></strong>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                      <span>Active Users:</span>
+                      <strong><?= number_format($user_stats['active_users'] ?? 0) ?></strong>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Balance Info -->
+                <div class="alert alert-info small mb-0">
+                  <i class="bi bi-info-circle-fill"></i>
+                  <strong>SMS Info:</strong> Cost: KES 0.80 per message | 
+                  Balance: <?= isset($sms_balance['balance']) ? $sms_balance['balance'] : 'Check dashboard' ?>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer" style="border-top: 1px solid var(--border); padding: 1rem 1.5rem; background: var(--surface-2);">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+              <i class="bi bi-x-circle me-1"></i>Cancel
+            </button>
+            <button type="submit" class="btn btn-danger" id="sendSmsBtn">
+              <i class="bi bi-send-fill me-1"></i> Send SMS Broadcast
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- SMS Status Toast -->
+  <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1100">
+    <div id="smsToast" class="toast" role="alert" data-bs-autohide="true" data-bs-delay="8000">
+      <div class="toast-header">
+        <i class="bi bi-envelope-paper-fill me-2 text-danger"></i>
+        <strong class="me-auto">SMS Broadcast</strong>
+        <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+      </div>
+      <div class="toast-body" id="smsToastBody">
+        Message sent successfully!
+      </div>
+    </div>
+  </div>
+
+  <!-- 3-COL GRID -->
   <div class="main-grid">
 
     <!-- LEFT: Recent Incidents -->
@@ -928,6 +1191,10 @@ body {
           </div>
         </div>
         <div class="qa-grid">
+          <button class="qa-btn sms-btn" data-bs-toggle="modal" data-bs-target="#smsModal">
+            <i class="bi bi-megaphone-fill"></i>
+            <span>SMS Alert</span>
+          </button>
           <a href="../incidents/pending.php" class="qa-btn"><i class="bi bi-check2-circle"></i><span>Verify</span></a>
           <a href="../resources/manage.php" class="qa-btn"><i class="bi bi-box-seam"></i><span>Aid</span></a>
           <a href="users.php" class="qa-btn"><i class="bi bi-people"></i><span>Users</span></a>
@@ -955,7 +1222,7 @@ body {
     </div>
   </div>
 
-  <!-- ── USERS TABLE ─────────────────────────────────────────── -->
+  <!-- USERS TABLE -->
   <div class="card">
     <div class="card-hd">
       <div class="card-hd-left">
@@ -971,6 +1238,8 @@ body {
           <tr>
             <th><i class="bi bi-person me-1"></i>Name</th>
             <th><i class="bi bi-envelope me-1"></i>Email</th>
+            <th><i class="bi bi-phone me-1"></i>Phone</th>
+            <th><i class="bi bi-envelope-paper me-1"></i>SMS</th>
             <th><i class="bi bi-tag me-1"></i>Role</th>
             <th><i class="bi bi-circle-fill me-1"></i>Status</th>
             <th><i class="bi bi-calendar me-1"></i>Joined</th>
@@ -983,6 +1252,8 @@ body {
           <tr onclick="location.href='edit_user.php?id=<?= $u['id'] ?>'">
             <td><div class="t-name"><?= htmlspecialchars($u['full_name']) ?></div></td>
             <td><div class="t-email"><?= htmlspecialchars($u['email']) ?></div></td>
+            <td><div class="t-email"><?= htmlspecialchars($u['phone'] ?? 'Not set') ?></div></td>
+            <td><span class="badge <?= ($u['sms_subscribed'] ?? 0) ? 'bg-success' : 'bg-secondary' ?>"><?= ($u['sms_subscribed'] ?? 0) ? 'Subscribed' : 'Unsubscribed' ?></span></td>
             <td><span class="role-chip <?= $rc ?>"><?= ucfirst($u['role']) ?></span></td>
             <td>
               <span class="status-dot">
@@ -1056,6 +1327,183 @@ function tick() {
   document.getElementById('clkDate').textContent = now.toLocaleDateString('en-KE',{weekday:'short',year:'numeric',month:'short',day:'numeric'});
 }
 tick(); setInterval(tick, 1000);
+
+// Character Counter for SMS
+const messageInput = document.getElementById('alertMessage');
+const charCounter = document.getElementById('charCounter');
+
+messageInput.addEventListener('input', function() {
+  const length = this.value.length;
+  charCounter.textContent = `${length}/160 characters`;
+  if (length > 140) {
+    charCounter.classList.add('warning');
+  } else {
+    charCounter.classList.remove('warning');
+  }
+  if (length > 160) {
+    charCounter.classList.add('danger');
+    this.value = this.value.substring(0, 160);
+  } else {
+    charCounter.classList.remove('danger');
+  }
+  updatePreview();
+});
+
+// Update SMS Preview
+function updatePreview() {
+  const alertType = document.querySelector('input[name="alertTypeRadio"]:checked').value;
+  const title = document.getElementById('alertTitle').value || 'Alert Title';
+  const message = document.getElementById('alertMessage').value || 'Your message will appear here...';
+  const priority = document.querySelector('input[name="priorityRadio"]:checked').value;
+  
+  let priorityPrefix = '';
+  let priorityIcon = '';
+  switch(priority) {
+    case 'emergency':
+      priorityPrefix = '🚨 EMERGENCY ALERT 🚨\n\n';
+      break;
+    case 'urgent':
+      priorityPrefix = '⚠️ URGENT ⚠️\n\n';
+      break;
+    default:
+      priorityPrefix = '📱 ALERT 📱\n\n';
+  }
+  
+  const alertPrefix = alertType.toUpperCase();
+  const previewText = priorityPrefix + `[${alertPrefix}] ${title}\n\n${message}\n\n---\nDisaster Response System\nReply STOP to unsubscribe`;
+  
+  document.getElementById('smsPreview').innerHTML = `<pre style="white-space: pre-wrap; font-family: monospace; font-size: 0.8rem; margin: 0;">${escapeHtml(previewText)}</pre>`;
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Alert type radio change
+document.querySelectorAll('input[name="alertTypeRadio"]').forEach(radio => {
+  radio.addEventListener('change', function() {
+    document.getElementById('alertType').value = this.value;
+    updatePreview();
+  });
+});
+
+// Priority radio change
+document.querySelectorAll('input[name="priorityRadio"]').forEach(radio => {
+  radio.addEventListener('change', function() {
+    document.getElementById('priority').value = this.value;
+    updatePreview();
+  });
+});
+
+// Title input change
+document.getElementById('alertTitle').addEventListener('input', updatePreview);
+
+// Target audience change
+document.getElementById('targetAudience').addEventListener('change', function() {
+  const countyDiv = document.getElementById('countySelectDiv');
+  const phoneDiv = document.getElementById('individualPhoneDiv');
+  
+  if (this.value === 'county') {
+    countyDiv.classList.remove('d-none');
+    phoneDiv.classList.add('d-none');
+  } else if (this.value === 'individual') {
+    countyDiv.classList.add('d-none');
+    phoneDiv.classList.remove('d-none');
+  } else {
+    countyDiv.classList.add('d-none');
+    phoneDiv.classList.add('d-none');
+  }
+});
+
+// SMS Broadcast Form Submit
+document.getElementById('smsBroadcastForm').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  
+  const sendBtn = document.getElementById('sendSmsBtn');
+  const originalText = sendBtn.innerHTML;
+  sendBtn.disabled = true;
+  sendBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Sending...';
+  
+  let phoneNumber = null;
+  if (document.getElementById('targetAudience').value === 'individual') {
+    phoneNumber = document.getElementById('individualPhone').value;
+  }
+  
+  const formData = {
+    alert_type: document.getElementById('alertType').value,
+    title: document.getElementById('alertTitle').value,
+    message: document.getElementById('alertMessage').value,
+    target_audience: document.getElementById('targetAudience').value,
+    county: document.getElementById('targetCounty').value,
+    priority: document.getElementById('priority').value,
+    save_to_db: document.getElementById('saveToDatabase').checked,
+    individual_phone: phoneNumber
+  };
+  
+  try {
+    const response = await fetch('../api/send_sms_broadcast.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formData)
+    });
+    
+    const result = await response.json();
+    
+    const toastBody = document.getElementById('smsToastBody');
+    if (result.success) {
+      toastBody.innerHTML = `
+        <i class="bi bi-check-circle-fill text-success fs-5 me-2"></i>
+        <div>
+          <strong>SMS Broadcast Sent!</strong><br>
+          <small>Recipients: ${result.recipients || 0}<br>
+          Sent: ${result.sent || 0}<br>
+          Failed: ${result.failed || 0}</small>
+        </div>
+      `;
+      
+      setTimeout(() => {
+        bootstrap.Modal.getInstance(document.getElementById('smsModal')).hide();
+        document.getElementById('smsBroadcastForm').reset();
+        document.getElementById('alertType').value = 'danger';
+        document.getElementById('priority').value = 'normal';
+        document.querySelector('input[name="alertTypeRadio"][value="danger"]').checked = true;
+        document.querySelector('input[name="priorityRadio"][value="normal"]').checked = true;
+        updatePreview();
+      }, 2000);
+    } else {
+      toastBody.innerHTML = `
+        <i class="bi bi-exclamation-triangle-fill text-danger fs-5 me-2"></i>
+        <div>
+          <strong>Error</strong><br>
+          <small>${result.message}</small>
+        </div>
+      `;
+    }
+    
+    const toast = new bootstrap.Toast(document.getElementById('smsToast'));
+    toast.show();
+    
+  } catch (error) {
+    const toastBody = document.getElementById('smsToastBody');
+    toastBody.innerHTML = `
+      <i class="bi bi-exclamation-triangle-fill text-danger fs-5 me-2"></i>
+      <div>
+        <strong>Connection Error</strong><br>
+        <small>${error.message}</small>
+      </div>
+    `;
+    const toast = new bootstrap.Toast(document.getElementById('smsToast'));
+    toast.show();
+  } finally {
+    sendBtn.disabled = false;
+    sendBtn.innerHTML = originalText;
+  }
+});
+
+// Initialize preview
+updatePreview();
 </script>
 </body>
 </html>
