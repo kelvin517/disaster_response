@@ -165,6 +165,7 @@ body{font-family:var(--ff-body);background:var(--bg);color:var(--text);font-size
   <div class="nav-area">
     <a href="/disaster_response/dashboard.php" class="npill"><i class="bi bi-speedometer2"></i> Dashboard</a>
     <a href="../messaging/inbox.php" class="npill"><i class="bi bi-envelope"></i> Messages</a>
+    <a href="../incidents/status.php" class="npill"><i class="bi bi-speedometer2"></i> Status</a>
   </div>
   <a href="../auth/logout.php" class="logout-btn" onclick="return confirm('Sign out?')"><i class="bi bi-box-arrow-right"></i> Logout</a>
 </div>

@@ -817,8 +817,8 @@ $conn->set_charset("utf8mb4");
         <ul class="nav-links" id="navLinks">
             <li><a href="index.php" class="active">Home</a></li>
             <li><a href="modules/mapping/map.php">Live Map</a></li>
-            <li><a href="modules/resources/resources.php">Resources</a></li>
-            <li><a href="modules/alerts/alerts.php">Alerts</a></li>
+            <li><a href="modules/resources/manage.php">Resources</a></li>
+            <li><a href="modules/alerts/broadcast.php">Alerts</a></li>
             <?php if(isset($_SESSION['user_id'])): ?>
                 <li class="nav-dropdown">
                     <a href="#" style="display:flex;align-items:center;gap:6px;">
@@ -1146,9 +1146,9 @@ $conn->set_charset("utf8mb4");
                     <ul class="footer-links">
                         <li><a href="index.php"><i class="fas fa-chevron-right"></i> Home</a></li>
                         <li><a href="modules/mapping/map.php"><i class="fas fa-chevron-right"></i> Live Map</a></li>
-                        <li><a href="modules/auth/register.php"><i class="fas fa-chevron-right"></i> Volunteer</a></li>
-                        <li><a href="modules/resources/resources.php"><i class="fas fa-chevron-right"></i> Resources</a></li>
-                        <li><a href="modules/alerts/alerts.php"><i class="fas fa-chevron-right"></i> Alerts</a></li>
+                        <li><a href="modules/volunteers/my_tasks.php"><i class="fas fa-chevron-right"></i> Volunteer</a></li>
+                        <li><a href="modules/resources/manage.php"><i class="fas fa-chevron-right"></i> Resources</a></li>
+                        <li><a href="modules/alerts/broadcast.php"><i class="fas fa-chevron-right"></i> Alerts</a></li>
                         <li><a href="modules/incidents/report.php"><i class="fas fa-chevron-right"></i> Report Emergency</a></li>
                     </ul>
                 </div>

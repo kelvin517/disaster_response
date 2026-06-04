@@ -51,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         ");
         if ($stmt->execute([$user_id, $receiver_id, $subject, $message])) {
             $_SESSION['success'] = "Message sent successfully!";
-            redirect('inbox.php');
+            redirect('modules/messaging/inbox.php');
         } else {
             $error = "Failed to send message.";
         }
