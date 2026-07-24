@@ -1,10 +1,4 @@
 <?php
-/**
- * Admin Dashboard - Complete System Overview with SMS Broadcast
- * Disaster Response & Resource Coordination System
- * Author: Kevin Kiplangat | INTE/MK/1299/09/23
- */
-
 session_start();
 require_once __DIR__ . '/../../includes/config/config.php';
 require_once __DIR__ . '/../../includes/functions/auth.php';

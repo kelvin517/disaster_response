@@ -81,472 +81,401 @@ $completion_rate = $stats['total'] > 0 ? round(($stats['completed'] / $stats['to
     <title>My Tasks — Volunteer Dashboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <style>
-        :root {
-            --black: #080808;
-            --surface: #111111;
-            --card: #161616;
-            --card2: #1C1C1C;
-            --border: rgba(255,255,255,0.07);
-            --border-hover: rgba(255,255,255,0.13);
-            --red: #E8271A;
-            --red-dim: rgba(232,39,26,0.12);
-            --red-border: rgba(232,39,26,0.3);
-            --amber: #D97706;
-            --amber-dim: rgba(217,119,6,0.12);
-            --amber-border: rgba(217,119,6,0.25);
-            --green: #16A34A;
-            --green-dim: rgba(22,163,74,0.1);
-            --green-border: rgba(22,163,74,0.25);
-            --blue: #2563EB;
-            --blue-dim: rgba(37,99,235,0.1);
-            --blue-border: rgba(37,99,235,0.25);
-            --text: #F0EDE8;
-            --muted: #6B6865;
-            --muted2: #9A9693;
-            --heading: 'Bebas Neue', sans-serif;
-            --body: 'DM Sans', sans-serif;
-            --mono: 'DM Mono', monospace;
-        }
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        html { scroll-behavior: smooth; }
-        body { font-family: var(--body); background: var(--black); color: var(--text); min-height: 100vh; }
-        ::-webkit-scrollbar { width: 3px; }
-        ::-webkit-scrollbar-track { background: var(--black); }
-        ::-webkit-scrollbar-thumb { background: var(--red); border-radius: 2px; }
+    /* ── Design Tokens ─────────────────────────────────────────────────── */
+    :root {
+        --bg:          #f5f6f8;
+        --surface:     #ffffff;
+        --surface-2:   #f0f2f5;
+        --surface-3:   #e8ebf0;
 
-        /* ─── NAV ─── */
-        .nav {
-            position: sticky; top: 0; z-index: 100;
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 14px 32px;
-            background: rgba(8,8,8,0.92);
-            backdrop-filter: blur(20px);
-            border-bottom: 1px solid var(--border);
-        }
-        .nav-brand {
-            font-family: var(--heading);
-            font-size: 1.5rem;
-            letter-spacing: 0.06em;
-            color: var(--red);
-            text-decoration: none;
-            display: flex; align-items: center; gap: 8px;
-        }
-        .nav-brand span { color: var(--text); }
-        .nav-right { display: flex; align-items: center; gap: 6px; }
-        .nav-user {
-            font-size: 0.78rem;
-            font-weight: 500;
-            color: var(--muted2);
-            padding: 6px 14px;
-            border-right: 1px solid var(--border);
-            margin-right: 4px;
-        }
-        .nav-link-pill {
-            font-size: 0.75rem;
-            font-weight: 500;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
-            color: var(--muted);
-            text-decoration: none;
-            padding: 7px 14px;
-            border-radius: 6px;
-            border: 1px solid transparent;
-            transition: all 0.18s;
-            position: relative;
-        }
-        .nav-link-pill:hover { color: var(--text); border-color: var(--border); background: var(--card); }
-        .nav-link-pill.danger:hover { color: var(--red); border-color: var(--red-border); background: var(--red-dim); }
-        .notif-dot {
-            position: absolute; top: 3px; right: 6px;
-            width: 7px; height: 7px;
-            background: var(--red);
-            border-radius: 50%;
-            border: 2px solid var(--black);
-        }
+        --border:      #e2e6ed;
+        --border-2:    #d0d5de;
 
-        /* ─── LAYOUT ─── */
-        .page { max-width: 1280px; margin: 0 auto; padding: 32px 32px 80px; }
+        --red:         #dc2626;
+        --red-dim:     rgba(220,38,38,.08);
+        --red-border:  rgba(220,38,38,.25);
 
-        /* ─── TOASTS ─── */
-        .toast-bar {
-            display: flex; align-items: center; gap: 12px;
-            padding: 14px 20px;
-            border-radius: 10px;
-            font-size: 0.85rem;
-            font-weight: 500;
-            margin-bottom: 24px;
-            border: 1px solid;
-        }
-        .toast-success { background: var(--green-dim); border-color: var(--green-border); color: #4ADE80; }
-        .toast-error { background: var(--red-dim); border-color: var(--red-border); color: #F87171; }
+        --amber:       #d97706;
+        --amber-dim:   rgba(217,119,6,.09);
+        --amber-border:rgba(217,119,6,.3);
 
-        /* ─── HERO HEADER ─── */
-        .page-header {
-            display: flex; align-items: flex-end; justify-content: space-between;
-            margin-bottom: 32px;
-            padding-bottom: 28px;
-            border-bottom: 1px solid var(--border);
-            flex-wrap: wrap; gap: 16px;
-        }
-        .page-header-left .eyebrow {
-            font-family: var(--mono);
-            font-size: 0.68rem;
-            letter-spacing: 0.2em;
-            text-transform: uppercase;
-            color: var(--red);
-            margin-bottom: 6px;
-        }
-        .page-title {
-            font-family: var(--heading);
-            font-size: clamp(2.8rem, 5vw, 4.2rem);
-            letter-spacing: 0.02em;
-            line-height: 0.95;
-            color: var(--text);
-        }
-        .status-pill {
-            display: inline-flex; align-items: center; gap: 8px;
-            font-size: 0.78rem; font-weight: 600;
-            padding: 8px 18px;
-            border-radius: 100px;
-            border: 1px solid;
-        }
-        .status-pill.available { background: var(--green-dim); border-color: var(--green-border); color: #4ADE80; }
-        .status-pill.busy { background: rgba(100,100,100,0.1); border-color: var(--border); color: var(--muted2); }
-        .status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+        --green:       #16a34a;
+        --green-dim:   rgba(22,163,74,.08);
+        --green-border:rgba(22,163,74,.28);
 
-        /* ─── STATS ROW ─── */
-        .stats-row {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 12px;
-            margin-bottom: 32px;
-        }
-        .stat-block {
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 20px 22px;
-            position: relative;
-            overflow: hidden;
-            transition: border-color 0.2s;
-        }
-        .stat-block:hover { border-color: var(--border-hover); }
-        .stat-block::before {
-            content: '';
-            position: absolute;
-            bottom: 0; left: 0; right: 0;
-            height: 2px;
-        }
-        .stat-block.s-total::before { background: var(--blue); }
-        .stat-block.s-pending::before { background: var(--amber); }
-        .stat-block.s-progress::before { background: var(--blue); }
-        .stat-block.s-done::before { background: var(--green); }
-        .stat-label {
-            font-family: var(--mono);
-            font-size: 0.65rem;
-            letter-spacing: 0.18em;
-            text-transform: uppercase;
-            color: var(--muted);
-            margin-bottom: 10px;
-        }
-        .stat-value {
-            font-family: var(--heading);
-            font-size: 3rem;
-            letter-spacing: 0.02em;
-            line-height: 1;
-        }
-        .stat-value.c-blue { color: #60A5FA; }
-        .stat-value.c-amber { color: #FBBF24; }
-        .stat-value.c-green { color: #4ADE80; }
-        .stat-sub {
-            font-size: 0.72rem;
-            color: var(--muted);
-            margin-top: 6px;
-        }
+        --blue:        #2563eb;
+        --blue-dim:    rgba(37,99,235,.08);
+        --blue-border: rgba(37,99,235,.25);
 
-        /* ─── SKILLS BAR ─── */
-        .skills-bar {
-            display: flex; align-items: center; gap: 20px;
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 14px 20px;
-            margin-bottom: 32px;
-            flex-wrap: wrap;
-        }
-        .skills-bar-label {
-            font-family: var(--mono);
-            font-size: 0.65rem;
-            letter-spacing: 0.15em;
-            text-transform: uppercase;
-            color: var(--muted);
-            white-space: nowrap;
-        }
-        .skills-text {
-            font-size: 0.82rem;
-            color: var(--muted2);
-            flex: 1;
-        }
-        .skills-update {
-            font-size: 0.72rem;
-            font-weight: 600;
-            color: var(--red);
-            text-decoration: none;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            white-space: nowrap;
-        }
-        .skills-update:hover { text-decoration: underline; }
-        .skills-divider { width: 1px; height: 20px; background: var(--border); }
+        --text:        #111827;
+        --text-2:      #374151;
+        --muted:       #9ca3af;
+        --muted-2:     #6b7280;
 
-        /* ─── TASK COLUMNS ─── */
-        .tasks-columns {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-bottom: 20px;
-        }
+        --ff-head: 'Syne', sans-serif;
+        --ff-body: 'DM Sans', sans-serif;
+        --ff-mono: 'DM Mono', monospace;
 
-        .col-block {
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 14px;
-            overflow: hidden;
-        }
-        .col-head {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 16px 20px;
-            border-bottom: 1px solid var(--border);
-            background: var(--card2);
-        }
-        .col-head-title {
-            display: flex; align-items: center; gap: 10px;
-            font-family: var(--mono);
-            font-size: 0.68rem;
-            letter-spacing: 0.18em;
-            text-transform: uppercase;
-            color: var(--muted2);
-        }
-        .col-head-title i { font-size: 0.9rem; }
-        .col-count {
-            font-family: var(--heading);
-            font-size: 1.3rem;
-            letter-spacing: 0.04em;
-            line-height: 1;
-        }
+        --r-sm: 6px;
+        --r-md: 10px;
+        --r-lg: 14px;
+        --ease: .18s cubic-bezier(.4,0,.2,1);
 
-        /* ─── TASK CARD ─── */
-        .task-card {
-            padding: 20px;
-            border-bottom: 1px solid var(--border);
-            transition: background 0.15s;
-        }
-        .task-card:last-child { border-bottom: none; }
-        .task-card:hover { background: var(--card2); }
+        --shadow-sm: 0 1px 3px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.05);
+        --shadow-md: 0 4px 12px rgba(0,0,0,.08), 0 2px 4px rgba(0,0,0,.04);
+        --shadow-lg: 0 10px 28px rgba(0,0,0,.1);
+    }
 
-        .task-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
-        .task-location {
-            font-size: 0.9rem;
-            font-weight: 600;
-            display: flex; align-items: center; gap: 7px;
-            color: var(--text);
-        }
-        .task-location i { color: var(--red); font-size: 0.8rem; }
-        .task-meta {
-            font-size: 0.76rem;
-            color: var(--muted);
-            margin-top: 3px;
-        }
-        .task-desc {
-            font-size: 0.82rem;
-            color: var(--muted2);
-            line-height: 1.65;
-            margin: 10px 0 14px;
-        }
-        .task-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body { font-family: var(--ff-body); background: var(--bg); color: var(--text); min-height: 100vh; }
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 3px; }
 
-        /* ─── SEVERITY BADGES ─── */
-        .sev-badge {
-            font-family: var(--mono);
-            font-size: 0.6rem;
-            font-weight: 500;
-            letter-spacing: 0.12em;
-            text-transform: uppercase;
-            padding: 4px 10px;
-            border-radius: 100px;
-            border: 1px solid;
-            white-space: nowrap;
-        }
-        .sev-4, .sev-critical { background: var(--red-dim); border-color: var(--red-border); color: #F87171; }
-        .sev-3, .sev-high { background: var(--amber-dim); border-color: var(--amber-border); color: #FBBF24; }
-        .sev-2, .sev-medium { background: rgba(234,179,8,0.1); border-color: rgba(234,179,8,0.2); color: #FDE68A; }
-        .sev-1, .sev-low { background: var(--green-dim); border-color: var(--green-border); color: #86EFAC; }
+    /* ── Navbar ──────────────────────────────────────────────────────── */
+    .nav {
+        position: sticky; top: 0; z-index: 200;
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 0 32px;
+        height: 60px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        box-shadow: var(--shadow-sm);
+    }
+    .nav-brand {
+        font-family: var(--ff-head);
+        font-size: 1.25rem; font-weight: 800;
+        letter-spacing: -.01em;
+        color: var(--red); text-decoration: none;
+        display: flex; align-items: center; gap: 8px;
+    }
+    .nav-brand span { color: var(--text); }
+    .nav-right { display: flex; align-items: center; gap: 4px; }
+    .nav-user {
+        font-size: .8rem; font-weight: 600; color: var(--text-2);
+        padding: 0 14px;
+        border-right: 1px solid var(--border);
+        margin-right: 4px;
+        white-space: nowrap;
+    }
+    .nav-pill {
+        font-size: .75rem; font-weight: 500;
+        color: var(--muted-2); text-decoration: none;
+        padding: 6px 13px; border-radius: var(--r-sm);
+        border: 1px solid transparent;
+        transition: all var(--ease);
+        position: relative; white-space: nowrap;
+    }
+    .nav-pill:hover { color: var(--text); background: var(--surface-2); border-color: var(--border); }
+    .nav-pill.danger:hover { color: var(--red); background: var(--red-dim); border-color: var(--red-border); }
+    .notif-dot {
+        position: absolute; top: 4px; right: 7px;
+        width: 6px; height: 6px;
+        background: var(--red); border-radius: 50%;
+        border: 1.5px solid var(--surface);
+    }
 
-        /* ─── PROGRESS BAR ─── */
-        .progress-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-        .progress-track {
-            flex: 1;
-            height: 4px;
-            background: var(--border);
-            border-radius: 2px;
-            overflow: hidden;
-        }
-        .progress-fill { height: 100%; background: var(--blue); border-radius: 2px; transition: width 0.4s; }
-        .progress-label {
-            font-family: var(--mono);
-            font-size: 0.65rem;
-            color: var(--muted);
-            white-space: nowrap;
-        }
+    /* ── Page shell ─────────────────────────────────────────────────── */
+    .page { max-width: 1280px; margin: 0 auto; padding: 28px 32px 80px; }
 
-        /* ─── BUTTONS ─── */
-        .btn {
-            display: inline-flex; align-items: center; gap: 7px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
-            text-decoration: none;
-            padding: 8px 18px;
-            border-radius: 8px;
-            border: 1px solid;
-            cursor: pointer;
-            transition: all 0.18s;
-            white-space: nowrap;
-            background: none;
-        }
-        .btn-accept { border-color: var(--green-border); color: #4ADE80; background: var(--green-dim); }
-        .btn-accept:hover { background: rgba(22,163,74,0.18); border-color: rgba(22,163,74,0.4); }
-        .btn-update { border-color: var(--blue-border); color: #60A5FA; background: var(--blue-dim); }
-        .btn-update:hover { background: rgba(37,99,235,0.18); border-color: rgba(37,99,235,0.4); }
-        .btn-complete { border-color: var(--green-border); color: #4ADE80; background: var(--green-dim); }
-        .btn-complete:hover { background: rgba(22,163,74,0.18); }
-        .btn-ghost { border-color: var(--border); color: var(--muted); background: transparent; }
-        .btn-ghost:hover { border-color: var(--border-hover); color: var(--text); }
-        .btn-solid-red { border-color: var(--red-border); color: #F87171; background: var(--red-dim); }
-        .btn-solid-red:hover { background: rgba(232,39,26,0.2); }
+    /* ── Toasts ─────────────────────────────────────────────────────── */
+    .toast-bar {
+        display: flex; align-items: center; gap: 10px;
+        padding: 13px 18px; border-radius: var(--r-md);
+        font-size: .85rem; font-weight: 500;
+        margin-bottom: 20px; border: 1px solid;
+    }
+    .toast-success { background: var(--green-dim); border-color: var(--green-border); color: var(--green); }
+    .toast-error   { background: var(--red-dim);   border-color: var(--red-border);   color: var(--red); }
 
-        /* ─── BOTTOM GRID ─── */
-        .bottom-grid {
-            display: grid;
-            grid-template-columns: 1fr 340px;
-            gap: 20px;
-        }
+    /* ── Page header ─────────────────────────────────────────────────── */
+    .page-header {
+        display: flex; align-items: flex-end; justify-content: space-between;
+        margin-bottom: 24px; padding-bottom: 20px;
+        border-bottom: 1px solid var(--border);
+        flex-wrap: wrap; gap: 16px;
+    }
+    .eyebrow {
+        font-family: var(--ff-mono);
+        font-size: .68rem; letter-spacing: .18em;
+        text-transform: uppercase; color: var(--red);
+        margin-bottom: 5px;
+    }
+    .page-title {
+        font-family: var(--ff-head);
+        font-size: clamp(2rem, 4vw, 3rem);
+        font-weight: 800; letter-spacing: -.02em; line-height: 1;
+        color: var(--text);
+    }
+    .status-pill {
+        display: inline-flex; align-items: center; gap: 7px;
+        font-size: .78rem; font-weight: 600;
+        padding: 7px 16px; border-radius: 100px; border: 1.5px solid;
+    }
+    .status-pill.available { background: var(--green-dim); border-color: var(--green-border); color: var(--green); }
+    .status-pill.busy      { background: var(--surface-2); border-color: var(--border-2);     color: var(--muted-2); }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 
-        /* ─── COMPLETED LIST ─── */
-        .completed-item {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 16px 20px;
-            border-bottom: 1px solid var(--border);
-            gap: 16px;
-        }
-        .completed-item:last-child { border-bottom: none; }
-        .completed-left { display: flex; align-items: center; gap: 12px; }
-        .check-icon {
-            width: 32px; height: 32px;
-            background: var(--green-dim);
-            border: 1px solid var(--green-border);
-            border-radius: 8px;
-            display: flex; align-items: center; justify-content: center;
-            color: #4ADE80;
-            font-size: 0.8rem;
-            flex-shrink: 0;
-        }
-        .completed-type { font-size: 0.88rem; font-weight: 600; }
-        .completed-loc { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
-        .completed-date {
-            font-family: var(--mono);
-            font-size: 0.65rem;
-            color: var(--muted);
-            white-space: nowrap;
-        }
+    /* ── Stats row ───────────────────────────────────────────────────── */
+    .stats-row {
+        display: grid; grid-template-columns: repeat(4,1fr);
+        gap: 12px; margin-bottom: 24px;
+    }
+    .stat-block {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--r-lg);
+        padding: 18px 20px;
+        position: relative; overflow: hidden;
+        box-shadow: var(--shadow-sm);
+        transition: box-shadow var(--ease), transform var(--ease);
+    }
+    .stat-block:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+    .stat-block::after {
+        content: '';
+        position: absolute; bottom: 0; left: 0; right: 0;
+        height: 3px; border-radius: 0 0 var(--r-lg) var(--r-lg);
+    }
+    .stat-block.s-total::after   { background: var(--blue); }
+    .stat-block.s-pending::after { background: var(--amber); }
+    .stat-block.s-progress::after{ background: var(--blue); }
+    .stat-block.s-done::after    { background: var(--green); }
 
-        /* ─── RIGHT SIDEBAR ─── */
-        .sidebar-block {
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 14px;
-            overflow: hidden;
-            margin-bottom: 16px;
-        }
-        .sidebar-head {
-            padding: 14px 18px;
-            border-bottom: 1px solid var(--border);
-            font-family: var(--mono);
-            font-size: 0.65rem;
-            letter-spacing: 0.18em;
-            text-transform: uppercase;
-            color: var(--muted);
-            background: var(--card2);
-        }
-        .sidebar-body { padding: 14px 18px; }
-        .action-btn {
-            display: flex; align-items: center; gap: 12px;
-            padding: 12px 14px;
-            border-radius: 8px;
-            border: 1px solid var(--border);
-            background: transparent;
-            color: var(--muted2);
-            text-decoration: none;
-            font-size: 0.8rem;
-            font-weight: 500;
-            transition: all 0.18s;
-            margin-bottom: 8px;
-        }
-        .action-btn:last-child { margin-bottom: 0; }
-        .action-btn:hover { border-color: var(--border-hover); color: var(--text); background: var(--card2); }
-        .action-btn i { width: 18px; text-align: center; color: var(--red); }
+    .stat-icon {
+        width: 36px; height: 36px; border-radius: 9px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: .95rem; margin-bottom: 12px;
+    }
+    .si-blue   { background: var(--blue-dim);  color: var(--blue);  border: 1px solid var(--blue-border); }
+    .si-amber  { background: var(--amber-dim); color: var(--amber); border: 1px solid var(--amber-border); }
+    .si-green  { background: var(--green-dim); color: var(--green); border: 1px solid var(--green-border); }
 
-        .tip-item {
-            display: flex; align-items: flex-start; gap: 10px;
-            padding: 9px 0;
-            border-bottom: 1px solid var(--border);
-            font-size: 0.8rem;
-            color: var(--muted2);
-            line-height: 1.5;
-        }
-        .tip-item:last-child { border-bottom: none; padding-bottom: 0; }
-        .tip-item i { color: #4ADE80; margin-top: 2px; flex-shrink: 0; font-size: 0.75rem; }
+    .stat-value {
+        font-family: var(--ff-mono);
+        font-size: 2.2rem; font-weight: 600; line-height: 1;
+        margin-bottom: 4px;
+    }
+    .sv-blue   { color: var(--blue); }
+    .sv-amber  { color: var(--amber); }
+    .sv-green  { color: var(--green); }
+    .sv-dark   { color: var(--text); }
+    .stat-label { font-size: .72rem; color: var(--muted-2); text-transform: uppercase; letter-spacing: .07em; font-weight: 600; }
+    .stat-sub   { font-size: .72rem; color: var(--muted); margin-top: 4px; }
 
-        /* ─── EMPTY STATE ─── */
-        .empty {
-            padding: 40px 20px;
-            text-align: center;
-            color: var(--muted);
-        }
-        .empty i { font-size: 2rem; margin-bottom: 12px; display: block; opacity: 0.4; }
-        .empty p { font-size: 0.82rem; }
+    /* ── Skills bar ──────────────────────────────────────────────────── */
+    .skills-bar {
+        display: flex; align-items: center; gap: 16px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--r-md);
+        padding: 12px 18px;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+        box-shadow: var(--shadow-sm);
+    }
+    .skills-bar-label {
+        font-family: var(--ff-mono);
+        font-size: .65rem; letter-spacing: .15em;
+        text-transform: uppercase; color: var(--muted);
+        white-space: nowrap;
+    }
+    .skills-divider { width: 1px; height: 18px; background: var(--border-2); }
+    .skills-text { font-size: .83rem; color: var(--muted-2); flex: 1; }
+    .skills-update {
+        font-size: .72rem; font-weight: 700;
+        color: var(--red); text-decoration: none;
+        letter-spacing: .07em; text-transform: uppercase;
+        white-space: nowrap;
+        display: flex; align-items: center; gap: 5px;
+    }
+    .skills-update:hover { text-decoration: underline; }
 
-        /* ─── REVEAL ─── */
-        .reveal { opacity: 0; transform: translateY(16px); transition: opacity 0.5s ease, transform 0.5s ease; }
-        .reveal.in { opacity: 1; transform: translateY(0); }
+    /* ── Task columns ────────────────────────────────────────────────── */
+    .tasks-columns {
+        display: grid; grid-template-columns: 1fr 1fr;
+        gap: 16px; margin-bottom: 16px;
+    }
+    .col-block {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--r-lg);
+        overflow: hidden;
+        box-shadow: var(--shadow-sm);
+    }
+    .col-head {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 14px 18px;
+        background: var(--surface-2);
+        border-bottom: 1px solid var(--border);
+    }
+    .col-head-title {
+        display: flex; align-items: center; gap: 8px;
+        font-family: var(--ff-mono);
+        font-size: .68rem; letter-spacing: .15em;
+        text-transform: uppercase; color: var(--muted-2);
+        font-weight: 500;
+    }
+    .col-count {
+        font-family: var(--ff-mono);
+        font-size: 1.2rem; font-weight: 600; line-height: 1;
+    }
 
-        @media (max-width: 900px) {
-            .page { padding: 20px 16px 60px; }
-            .stats-row { grid-template-columns: repeat(2, 1fr); }
-            .tasks-columns { grid-template-columns: 1fr; }
-            .bottom-grid { grid-template-columns: 1fr; }
-            .nav { padding: 12px 16px; }
-        }
+    /* ── Task card ───────────────────────────────────────────────────── */
+    .task-card {
+        padding: 16px 18px;
+        border-bottom: 1px solid var(--border);
+        transition: background var(--ease);
+    }
+    .task-card:last-child { border-bottom: none; }
+    .task-card:hover { background: var(--surface-2); }
+
+    .task-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+    .task-location { font-size: .88rem; font-weight: 600; display: flex; align-items: center; gap: 6px; color: var(--text); }
+    .task-location i { color: var(--red); font-size: .75rem; }
+    .task-meta { font-size: .74rem; color: var(--muted-2); margin-top: 2px; }
+    .task-desc { font-size: .81rem; color: var(--muted-2); line-height: 1.65; margin: 8px 0 12px; }
+    .task-actions { display: flex; gap: 7px; flex-wrap: wrap; }
+
+    /* ── Severity badges ─────────────────────────────────────────────── */
+    .sev-badge {
+        font-family: var(--ff-mono);
+        font-size: .6rem; font-weight: 600;
+        letter-spacing: .1em; text-transform: uppercase;
+        padding: 3px 9px; border-radius: 100px; border: 1px solid;
+        white-space: nowrap;
+    }
+    .sev-4, .sev-critical { background: rgba(220,38,38,.1);  color: #b91c1c; border-color: rgba(220,38,38,.3); }
+    .sev-3, .sev-high     { background: rgba(217,119,6,.1);  color: #b45309; border-color: rgba(217,119,6,.3); }
+    .sev-2, .sev-medium   { background: rgba(234,179,8,.1);  color: #92400e; border-color: rgba(234,179,8,.3); }
+    .sev-1, .sev-low      { background: rgba(22,163,74,.08); color: #15803d; border-color: rgba(22,163,74,.28); }
+
+    /* ── Progress bar ────────────────────────────────────────────────── */
+    .progress-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .progress-track { flex: 1; height: 5px; background: var(--surface-3); border-radius: 3px; overflow: hidden; }
+    .progress-fill { height: 100%; background: var(--blue); border-radius: 3px; transition: width .4s; }
+    .progress-label { font-family: var(--ff-mono); font-size: .63rem; color: var(--muted); white-space: nowrap; }
+
+    /* ── Buttons ─────────────────────────────────────────────────────── */
+    .btn {
+        display: inline-flex; align-items: center; gap: 6px;
+        font-size: .75rem; font-weight: 600;
+        letter-spacing: .05em; text-transform: uppercase;
+        text-decoration: none; padding: 7px 15px;
+        border-radius: var(--r-sm); border: 1.5px solid;
+        cursor: pointer; transition: all var(--ease);
+        white-space: nowrap; background: none;
+        font-family: var(--ff-body);
+    }
+    .btn-accept  { border-color: var(--green-border); color: var(--green); background: var(--green-dim); }
+    .btn-accept:hover  { background: rgba(22,163,74,.15); border-color: rgba(22,163,74,.45); }
+    .btn-update  { border-color: var(--blue-border);  color: var(--blue);  background: var(--blue-dim); }
+    .btn-update:hover  { background: rgba(37,99,235,.15); }
+    .btn-complete{ border-color: var(--green-border); color: var(--green); background: var(--green-dim); }
+    .btn-complete:hover{ background: rgba(22,163,74,.15); }
+    .btn-ghost   { border-color: var(--border-2); color: var(--muted-2); background: transparent; }
+    .btn-ghost:hover{ border-color: var(--border-2); color: var(--text); background: var(--surface-2); }
+
+    /* ── Bottom grid ─────────────────────────────────────────────────── */
+    .bottom-grid {
+        display: grid; grid-template-columns: 1fr 320px;
+        gap: 16px;
+    }
+
+    /* ── Completed list ──────────────────────────────────────────────── */
+    .completed-item {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 14px 18px; border-bottom: 1px solid var(--border); gap: 14px;
+    }
+    .completed-item:last-child { border-bottom: none; }
+    .completed-left { display: flex; align-items: center; gap: 12px; }
+    .check-icon {
+        width: 32px; height: 32px;
+        background: var(--green-dim); border: 1.5px solid var(--green-border);
+        border-radius: 9px;
+        display: flex; align-items: center; justify-content: center;
+        color: var(--green); font-size: .8rem; flex-shrink: 0;
+    }
+    .completed-type { font-size: .87rem; font-weight: 600; color: var(--text); }
+    .completed-loc  { font-size: .73rem; color: var(--muted); margin-top: 2px; }
+    .completed-date { font-family: var(--ff-mono); font-size: .65rem; color: var(--muted); white-space: nowrap; }
+
+    /* ── Sidebar ─────────────────────────────────────────────────────── */
+    .sidebar-block {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--r-lg);
+        overflow: hidden; margin-bottom: 12px;
+        box-shadow: var(--shadow-sm);
+    }
+    .sidebar-head {
+        padding: 12px 16px;
+        background: var(--surface-2);
+        border-bottom: 1px solid var(--border);
+        font-family: var(--ff-mono);
+        font-size: .63rem; letter-spacing: .17em;
+        text-transform: uppercase; color: var(--muted-2);
+        font-weight: 500;
+    }
+    .sidebar-body { padding: 12px; }
+
+    .action-btn {
+        display: flex; align-items: center; gap: 10px;
+        padding: 10px 12px; border-radius: var(--r-sm);
+        border: 1px solid var(--border);
+        color: var(--text-2); text-decoration: none;
+        font-size: .81rem; font-weight: 500;
+        transition: all var(--ease); margin-bottom: 6px;
+    }
+    .action-btn:last-child { margin-bottom: 0; }
+    .action-btn:hover { border-color: var(--border-2); background: var(--surface-2); color: var(--text); }
+    .action-btn i { width: 16px; text-align: center; color: var(--red); font-size: .85rem; }
+
+    .tip-item {
+        display: flex; align-items: flex-start; gap: 9px;
+        padding: 8px 0; border-bottom: 1px solid var(--border);
+        font-size: .8rem; color: var(--text-2); line-height: 1.5;
+    }
+    .tip-item:last-child { border-bottom: none; padding-bottom: 0; }
+    .tip-item i { color: var(--green); margin-top: 2px; flex-shrink: 0; font-size: .72rem; }
+
+    /* ── Empty state ─────────────────────────────────────────────────── */
+    .empty { padding: 36px 16px; text-align: center; color: var(--muted); }
+    .empty i { font-size: 1.8rem; margin-bottom: 10px; display: block; opacity: .35; }
+    .empty p { font-size: .82rem; }
+
+    /* ── Reveal ──────────────────────────────────────────────────────── */
+    .reveal { opacity: 0; transform: translateY(14px); transition: opacity .45s ease, transform .45s ease; }
+    .reveal.in { opacity: 1; transform: translateY(0); }
+
+    @media (max-width: 900px) {
+        .nav { padding: 0 16px; }
+        .page { padding: 20px 16px 60px; }
+        .stats-row { grid-template-columns: repeat(2,1fr); }
+        .tasks-columns { grid-template-columns: 1fr; }
+        .bottom-grid { grid-template-columns: 1fr; }
+    }
     </style>
 </head>
 <body>
 
-<!-- ─── NAV ─── -->
+<!-- ── NAV ──────────────────────────────────────────────────────────── -->
 <nav class="nav">
-    <a href="my_tasks.php" class="nav-brand"><i class="fas fa-hands-helping"></i><span>Volunteer</span>HQ</a>
+    <a href="my_tasks.php" class="nav-brand">
+        <i class="fas fa-hands-helping"></i><span>Volunteer</span>HQ
+    </a>
     <div class="nav-right">
         <div class="nav-user"><?= htmlspecialchars($_SESSION['full_name']) ?></div>
-        <a href="register.php" class="nav-link-pill">Profile</a>
-        <a href="../messaging/inbox.php" class="nav-link-pill" style="position:relative;">
+        <a href="register.php" class="nav-pill">Profile</a>
+        <a href="../messaging/inbox.php" class="nav-pill" style="position:relative;">
             Messages
             <?php if($unread_messages > 0): ?><span class="notif-dot"></span><?php endif; ?>
         </a>
-        <a href="../mapping/map.php" class="nav-link-pill">Map</a>
-        <a href="../auth/logout.php" class="nav-link-pill danger" onclick="return confirm('Logout?');">Logout</a>
+        <a href="../mapping/map.php" class="nav-pill">Map</a>
+        <a href="../auth/logout.php" class="nav-pill danger" onclick="return confirm('Logout?');">Logout</a>
     </div>
 </nav>
 
@@ -559,69 +488,84 @@ $completion_rate = $stats['total'] > 0 ? round(($stats['completed'] / $stats['to
     <div class="toast-bar toast-error reveal"><i class="fas fa-exclamation-circle"></i><?= htmlspecialchars($error) ?></div>
     <?php endif; ?>
 
-    <!-- ─── PAGE HEADER ─── -->
+    <!-- Page header -->
     <div class="page-header reveal">
-        <div class="page-header-left">
+        <div>
             <div class="eyebrow">// Volunteer Dashboard</div>
-            <h1 class="page-title">MY TASKS</h1>
+            <h1 class="page-title">My Tasks</h1>
         </div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:10px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
             <div class="status-pill <?= $volunteer['availability_status'] === 'available' ? 'available' : 'busy' ?>">
                 <span class="status-dot"></span>
                 <?= ucfirst($volunteer['availability_status']) ?>
             </div>
-            <div style="font-family:var(--mono);font-size:0.62rem;color:var(--muted);letter-spacing:0.12em;"><?= strtoupper(date('D, M j Y')) ?></div>
+            <div style="font-family:var(--ff-mono);font-size:.62rem;color:var(--muted);letter-spacing:.1em;"><?= strtoupper(date('D, M j Y')) ?></div>
         </div>
     </div>
 
-    <!-- ─── STATS ─── -->
+    <!-- Stats -->
     <div class="stats-row reveal">
         <div class="stat-block s-total">
+            <div class="stat-icon si-blue"><i class="fas fa-list-check"></i></div>
+            <div class="stat-value sv-dark"><?= $stats['total'] ?></div>
             <div class="stat-label">Total Tasks</div>
-            <div class="stat-value c-blue"><?= $stats['total'] ?></div>
         </div>
         <div class="stat-block s-pending">
+            <div class="stat-icon si-amber"><i class="fas fa-clock"></i></div>
+            <div class="stat-value sv-amber"><?= $stats['assigned'] ?></div>
             <div class="stat-label">Pending</div>
-            <div class="stat-value c-amber"><?= $stats['assigned'] ?></div>
         </div>
         <div class="stat-block s-progress">
+            <div class="stat-icon si-blue"><i class="fas fa-bolt"></i></div>
+            <div class="stat-value sv-blue"><?= $stats['in_progress'] ?></div>
             <div class="stat-label">In Progress</div>
-            <div class="stat-value c-blue"><?= $stats['in_progress'] ?></div>
         </div>
         <div class="stat-block s-done">
+            <div class="stat-icon si-green"><i class="fas fa-circle-check"></i></div>
+            <div class="stat-value sv-green"><?= $stats['completed'] ?></div>
             <div class="stat-label">Completed</div>
-            <div class="stat-value c-green"><?= $stats['completed'] ?></div>
             <div class="stat-sub"><?= $completion_rate ?>% completion rate</div>
         </div>
     </div>
 
-    <!-- ─── SKILLS BAR ─── -->
+    <!-- Skills bar -->
     <div class="skills-bar reveal">
         <div class="skills-bar-label">Skills</div>
         <div class="skills-divider"></div>
         <div class="skills-text">
-            <?= !empty($volunteer['skills']) ? htmlspecialchars(substr($volunteer['skills'], 0, 60)) . (strlen($volunteer['skills']) > 60 ? '...' : '') : 'No skills listed yet' ?>
+            <?= !empty($volunteer['skills'])
+                ? htmlspecialchars(substr($volunteer['skills'], 0, 60)) . (strlen($volunteer['skills']) > 60 ? '…' : '')
+                : '<span style="color:var(--muted);font-style:italic">No skills listed yet</span>' ?>
         </div>
-        <a href="register.php" class="skills-update"><i class="fas fa-pen" style="font-size:0.6rem;"></i> Update Skills</a>
+        <a href="register.php" class="skills-update"><i class="fas fa-pen"></i> Update Skills</a>
     </div>
 
-    <!-- ─── TASK COLUMNS ─── -->
+    <!-- Task columns -->
     <div class="tasks-columns">
 
         <!-- PENDING -->
         <div class="col-block reveal">
             <div class="col-head">
-                <div class="col-head-title"><i class="fas fa-clock" style="color:var(--amber);"></i> Pending Tasks</div>
-                <div class="col-count" style="color:var(--amber);"><?= $stats['assigned'] ?></div>
+                <div class="col-head-title">
+                    <i class="fas fa-clock" style="color:var(--amber)"></i> Pending Tasks
+                </div>
+                <div class="col-count" style="color:var(--amber)"><?= $stats['assigned'] ?></div>
             </div>
             <?php if(count($pending_tasks) > 0): foreach($pending_tasks as $task): ?>
             <div class="task-card">
                 <div class="task-top">
                     <div>
-                        <div class="task-location"><i class="fas fa-map-marker-alt"></i><?= htmlspecialchars($task['location_name'] ?? 'Location TBD') ?></div>
-                        <div class="task-meta"><?= ucfirst($task['incident_type']) ?> &nbsp;·&nbsp; Assigned by <?= htmlspecialchars($task['assigned_by_name']) ?></div>
+                        <div class="task-location">
+                            <i class="fas fa-map-marker-alt"></i>
+                            <?= htmlspecialchars($task['location_name'] ?? 'Location TBD') ?>
+                        </div>
+                        <div class="task-meta">
+                            <?= ucfirst($task['incident_type']) ?> &nbsp;·&nbsp; Assigned by <?= htmlspecialchars($task['assigned_by_name']) ?>
+                        </div>
                     </div>
-                    <span class="sev-badge sev-<?= $task['severity'] ?>"><?= match((int)$task['severity']) {4=>'Critical',3=>'High',2=>'Medium',default=>'Low'} ?></span>
+                    <span class="sev-badge sev-<?= $task['severity'] ?>">
+                        <?= match((int)$task['severity']) {4=>'Critical',3=>'High',2=>'Medium',default=>'Low'} ?>
+                    </span>
                 </div>
                 <p class="task-desc"><?= htmlspecialchars(substr($task['task_description'] ?? $task['incident_desc'], 0, 100)) ?>...</p>
                 <div class="task-actions">
@@ -630,7 +574,9 @@ $completion_rate = $stats['total'] > 0 ? round(($stats['completed'] / $stats['to
                         <input type="hidden" name="action" value="accept_task">
                         <button type="submit" class="btn btn-accept"><i class="fas fa-check"></i> Accept</button>
                     </form>
-                    <a href="../incidents/view.php?id=<?= $task['incident_id'] ?>" class="btn btn-ghost"><i class="fas fa-arrow-right"></i> Details</a>
+                    <a href="../incidents/view.php?id=<?= $task['incident_id'] ?>" class="btn btn-ghost">
+                        <i class="fas fa-arrow-right"></i> Details
+                    </a>
                 </div>
             </div>
             <?php endforeach; else: ?>
@@ -641,20 +587,31 @@ $completion_rate = $stats['total'] > 0 ? round(($stats['completed'] / $stats['to
         <!-- IN PROGRESS -->
         <div class="col-block reveal">
             <div class="col-head">
-                <div class="col-head-title"><i class="fas fa-bolt" style="color:#60A5FA;"></i> In Progress</div>
-                <div class="col-count" style="color:#60A5FA;"><?= $stats['in_progress'] ?></div>
+                <div class="col-head-title">
+                    <i class="fas fa-bolt" style="color:var(--blue)"></i> In Progress
+                </div>
+                <div class="col-count" style="color:var(--blue)"><?= $stats['in_progress'] ?></div>
             </div>
             <?php if(count($in_progress_tasks) > 0): foreach($in_progress_tasks as $task): ?>
             <div class="task-card">
                 <div class="task-top">
                     <div>
-                        <div class="task-location"><i class="fas fa-map-marker-alt"></i><?= htmlspecialchars($task['location_name'] ?? 'Location TBD') ?></div>
-                        <div class="task-meta"><?= ucfirst($task['incident_type']) ?> &nbsp;·&nbsp; Assigned by <?= htmlspecialchars($task['assigned_by_name']) ?></div>
+                        <div class="task-location">
+                            <i class="fas fa-map-marker-alt"></i>
+                            <?= htmlspecialchars($task['location_name'] ?? 'Location TBD') ?>
+                        </div>
+                        <div class="task-meta">
+                            <?= ucfirst($task['incident_type']) ?> &nbsp;·&nbsp; Assigned by <?= htmlspecialchars($task['assigned_by_name']) ?>
+                        </div>
                     </div>
-                    <span class="sev-badge sev-<?= $task['severity'] ?>"><?= match((int)$task['severity']) {4=>'Critical',3=>'High',2=>'Medium',default=>'Low'} ?></span>
+                    <span class="sev-badge sev-<?= $task['severity'] ?>">
+                        <?= match((int)$task['severity']) {4=>'Critical',3=>'High',2=>'Medium',default=>'Low'} ?>
+                    </span>
                 </div>
                 <div class="progress-row">
-                    <div class="progress-track"><div class="progress-fill" style="width:<?= min(100, ($task['progress_count'] / 6) * 100) ?>%;"></div></div>
+                    <div class="progress-track">
+                        <div class="progress-fill" style="width:<?= min(100, ($task['progress_count'] / 6) * 100) ?>%"></div>
+                    </div>
                     <div class="progress-label"><?= $task['progress_count'] ?>/6 steps</div>
                 </div>
                 <p class="task-desc"><?= htmlspecialchars(substr($task['task_description'] ?? $task['incident_desc'], 0, 90)) ?>...</p>
@@ -664,7 +621,9 @@ $completion_rate = $stats['total'] > 0 ? round(($stats['completed'] / $stats['to
                         <input type="hidden" name="task_id" value="<?= $task['id'] ?>">
                         <input type="hidden" name="action" value="update_status">
                         <input type="hidden" name="status" value="completed">
-                        <button type="submit" class="btn btn-complete" onclick="return confirm('Mark as complete?')"><i class="fas fa-check-double"></i> Complete</button>
+                        <button type="submit" class="btn btn-complete" onclick="return confirm('Mark as complete?')">
+                            <i class="fas fa-check-double"></i> Complete
+                        </button>
                     </form>
                 </div>
             </div>
@@ -675,14 +634,16 @@ $completion_rate = $stats['total'] > 0 ? round(($stats['completed'] / $stats['to
 
     </div>
 
-    <!-- ─── BOTTOM GRID ─── -->
+    <!-- Bottom grid -->
     <div class="bottom-grid">
 
-        <!-- COMPLETED -->
+        <!-- Completed -->
         <div class="col-block reveal">
             <div class="col-head">
-                <div class="col-head-title"><i class="fas fa-check-circle" style="color:#4ADE80;"></i> Recently Completed</div>
-                <div class="col-count" style="color:#4ADE80;"><?= $stats['completed'] ?></div>
+                <div class="col-head-title">
+                    <i class="fas fa-check-circle" style="color:var(--green)"></i> Recently Completed
+                </div>
+                <div class="col-count" style="color:var(--green)"><?= $stats['completed'] ?></div>
             </div>
             <?php if(count($completed_tasks) > 0): foreach($completed_tasks as $task): ?>
             <div class="completed-item">
@@ -690,7 +651,10 @@ $completion_rate = $stats['total'] > 0 ? round(($stats['completed'] / $stats['to
                     <div class="check-icon"><i class="fas fa-check"></i></div>
                     <div>
                         <div class="completed-type"><?= ucfirst($task['incident_type']) ?> Response</div>
-                        <div class="completed-loc"><i class="fas fa-map-marker-alt" style="font-size:0.65rem;color:var(--red);margin-right:4px;"></i><?= htmlspecialchars($task['location_name'] ?? 'Location') ?></div>
+                        <div class="completed-loc">
+                            <i class="fas fa-map-marker-alt" style="font-size:.63rem;color:var(--red);margin-right:3px;"></i>
+                            <?= htmlspecialchars($task['location_name'] ?? 'Location') ?>
+                        </div>
                     </div>
                 </div>
                 <div class="completed-date"><?= date('M j, Y', strtotime($task['completed_at'])) ?></div>
@@ -700,20 +664,20 @@ $completion_rate = $stats['total'] > 0 ? round(($stats['completed'] / $stats['to
             <?php endif; ?>
         </div>
 
-        <!-- SIDEBAR -->
+        <!-- Sidebar -->
         <div>
             <div class="sidebar-block reveal">
                 <div class="sidebar-head">Quick Actions</div>
-                <div class="sidebar-body" style="padding:12px;">
+                <div class="sidebar-body">
                     <a href="../incidents/report.php" class="action-btn"><i class="fas fa-exclamation-triangle"></i> Report Incident</a>
-                    <a href="register.php" class="action-btn"><i class="fas fa-user-edit"></i> Update Profile</a>
+                    <a href="register.php"            class="action-btn"><i class="fas fa-user-edit"></i> Update Profile</a>
                     <a href="../messaging/compose.php" class="action-btn"><i class="fas fa-envelope"></i> Send Message</a>
-                    <a href="../mapping/map.php" class="action-btn"><i class="fas fa-map"></i> View Live Map</a>
+                    <a href="../mapping/map.php"       class="action-btn"><i class="fas fa-map"></i> View Live Map</a>
                 </div>
             </div>
             <div class="sidebar-block reveal">
                 <div class="sidebar-head">Field Tips</div>
-                <div class="sidebar-body" style="padding:12px 18px;">
+                <div class="sidebar-body" style="padding:10px 16px;">
                     <div class="tip-item"><i class="fas fa-check-circle"></i>Keep your availability status updated at all times</div>
                     <div class="tip-item"><i class="fas fa-check-circle"></i>Only accept tasks that match your listed skills</div>
                     <div class="tip-item"><i class="fas fa-check-circle"></i>Use the progress tracker to log each step taken</div>

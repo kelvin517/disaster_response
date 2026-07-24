@@ -67,11 +67,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     }
 }
 
-$skills_array       = $existing_profile ? explode(',', $existing_profile['skills']) : [];
+$skills_array        = $existing_profile ? explode(',', $existing_profile['skills']) : [];
 $availability_status = $existing_profile['availability_status'] ?? 'available';
-$experience_years   = $existing_profile['experience_years'] ?? 0;
-$certifications     = $existing_profile['certifications'] ?? '';
-$phone_emergency    = $existing_profile['phone_emergency'] ?? '';
+$experience_years    = $existing_profile['experience_years'] ?? 0;
+$certifications      = $existing_profile['certifications'] ?? '';
+$phone_emergency     = $existing_profile['phone_emergency'] ?? '';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -81,370 +81,368 @@ $phone_emergency    = $existing_profile['phone_emergency'] ?? '';
     <title><?= $existing_profile ? 'Update Profile' : 'Volunteer Registration' ?> — DisasterResponse</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <style>
-        :root {
-            --black: #080808;
-            --surface: #111111;
-            --card: #161616;
-            --card2: #1C1C1C;
-            --border: rgba(255,255,255,0.07);
-            --border-hover: rgba(255,255,255,0.13);
-            --red: #E8271A;
-            --red-dim: rgba(232,39,26,0.1);
-            --red-border: rgba(232,39,26,0.28);
-            --green: #16A34A;
-            --green-dim: rgba(22,163,74,0.1);
-            --green-border: rgba(22,163,74,0.25);
-            --amber: #D97706;
-            --amber-dim: rgba(217,119,6,0.1);
-            --amber-border: rgba(217,119,6,0.22);
-            --blue: #2563EB;
-            --blue-dim: rgba(37,99,235,0.1);
-            --blue-border: rgba(37,99,235,0.25);
-            --text: #F0EDE8;
-            --muted: #6B6865;
-            --muted2: #9A9693;
-            --heading: 'Bebas Neue', sans-serif;
-            --body: 'DM Sans', sans-serif;
-            --mono: 'DM Mono', monospace;
-        }
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        html { scroll-behavior: smooth; }
-        body { font-family: var(--body); background: var(--black); color: var(--text); min-height: 100vh; }
-        ::-webkit-scrollbar { width: 3px; }
-        ::-webkit-scrollbar-track { background: var(--black); }
-        ::-webkit-scrollbar-thumb { background: var(--red); border-radius: 2px; }
+    /* ── Design Tokens ─────────────────────────────────────────────────── */
+    :root {
+        --bg:           #f5f6f8;
+        --surface:      #ffffff;
+        --surface-2:    #f0f2f5;
+        --surface-3:    #e8ebf0;
 
-        /* ─── NAV ─── */
-        .nav {
-            position: sticky; top: 0; z-index: 200;
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 14px 32px;
-            background: rgba(8,8,8,0.92);
-            backdrop-filter: blur(20px);
-            border-bottom: 1px solid var(--border);
-        }
-        .nav-brand {
-            font-family: var(--heading);
-            font-size: 1.5rem; letter-spacing: 0.06em;
-            color: var(--red); text-decoration: none;
-            display: flex; align-items: center; gap: 8px;
-        }
-        .nav-brand span { color: var(--text); }
-        .nav-right { display: flex; align-items: center; gap: 6px; }
-        .nav-link-pill {
-            font-size: 0.75rem; font-weight: 500;
-            letter-spacing: 0.06em; text-transform: uppercase;
-            color: var(--muted); text-decoration: none;
-            padding: 7px 14px; border-radius: 6px;
-            border: 1px solid transparent;
-            transition: all 0.18s;
-        }
-        .nav-link-pill:hover { color: var(--text); border-color: var(--border); background: var(--card); }
-        .nav-link-pill.active { color: var(--text); border-color: var(--border); background: var(--card); }
-        .nav-link-pill.danger:hover { color: var(--red); border-color: var(--red-border); background: var(--red-dim); }
+        --border:       #e2e6ed;
+        --border-2:     #d0d5de;
 
-        /* ─── PAGE HEADER ─── */
-        .page-header {
-            background: var(--surface);
-            border-bottom: 1px solid var(--border);
-            padding: 36px 32px 32px;
-            position: relative;
-            overflow: hidden;
-        }
-        .page-header::after {
-            content: '';
-            position: absolute; right: 0; top: 0; bottom: 0;
-            width: 40%;
-            background: radial-gradient(ellipse at right center, rgba(232,39,26,0.07) 0%, transparent 65%);
-            pointer-events: none;
-        }
-        .page-header-inner { max-width: 1200px; margin: 0 auto; position: relative; z-index: 1; }
-        .eyebrow {
-            font-family: var(--mono);
-            font-size: 0.65rem; letter-spacing: 0.2em;
-            text-transform: uppercase; color: var(--red);
-            margin-bottom: 8px;
-        }
-        .page-title {
-            font-family: var(--heading);
-            font-size: clamp(2.6rem, 5vw, 4rem);
-            letter-spacing: 0.02em; line-height: 0.95;
-        }
-        .page-sub {
-            font-size: 0.85rem; color: var(--muted2);
-            margin-top: 8px; font-weight: 400;
-        }
+        --red:          #dc2626;
+        --red-dim:      rgba(220,38,38,.08);
+        --red-border:   rgba(220,38,38,.25);
+        --red-focus:    rgba(220,38,38,.35);
 
-        /* ─── LAYOUT ─── */
-        .page { max-width: 1200px; margin: 0 auto; padding: 28px 32px 80px; }
-        .grid-main { display: grid; grid-template-columns: 1fr 360px; gap: 20px; align-items: start; }
+        --amber:        #d97706;
+        --amber-dim:    rgba(217,119,6,.09);
+        --amber-border: rgba(217,119,6,.3);
 
-        /* ─── TOAST ─── */
-        .toast-bar {
-            display: flex; align-items: center; gap: 12px;
-            padding: 14px 20px; border-radius: 10px;
-            font-size: 0.85rem; font-weight: 500;
-            margin-bottom: 20px; border: 1px solid;
-        }
-        .toast-success { background: var(--green-dim); border-color: var(--green-border); color: #4ADE80; }
-        .toast-error { background: var(--red-dim); border-color: var(--red-border); color: #F87171; }
+        --green:        #16a34a;
+        --green-dim:    rgba(22,163,74,.08);
+        --green-border: rgba(22,163,74,.28);
 
-        /* ─── FORM BLOCKS ─── */
-        .form-block {
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 14px;
-            overflow: hidden;
-            margin-bottom: 16px;
-        }
-        .block-head {
-            display: flex; align-items: center; gap: 10px;
-            padding: 15px 20px;
-            background: var(--card2);
-            border-bottom: 1px solid var(--border);
-            font-family: var(--mono);
-            font-size: 0.65rem; letter-spacing: 0.18em;
-            text-transform: uppercase; color: var(--muted2);
-        }
-        .block-head i { color: var(--red); font-size: 0.85rem; }
-        .block-body { padding: 22px 20px; }
+        --blue:         #2563eb;
+        --blue-dim:     rgba(37,99,235,.08);
+        --blue-border:  rgba(37,99,235,.25);
 
-        /* ─── SKILL GRID ─── */
-        .skill-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 8px;
-        }
-        .skill-tile {
-            display: flex; align-items: center; gap: 12px;
-            padding: 13px 14px;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            cursor: pointer;
-            transition: all 0.18s;
-            user-select: none;
-        }
-        .skill-tile:hover { border-color: var(--border-hover); background: var(--card2); }
-        .skill-tile.active {
-            background: var(--red-dim);
-            border-color: var(--red-border);
-        }
-        .skill-tile.active .skill-icon { color: var(--red); }
-        .skill-tile.active .skill-name { color: var(--text); }
-        .skill-icon {
-            width: 32px; height: 32px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 0.9rem;
-            color: var(--muted);
-            flex-shrink: 0;
-            transition: color 0.18s;
-        }
-        .skill-name {
-            font-size: 0.82rem; font-weight: 500;
-            color: var(--muted2);
-            transition: color 0.18s;
-        }
-        .skill-check {
-            margin-left: auto;
-            width: 18px; height: 18px;
-            border-radius: 50%;
-            border: 1px solid var(--border);
-            display: flex; align-items: center; justify-content: center;
-            font-size: 0.55rem;
-            color: transparent;
-            flex-shrink: 0;
-            transition: all 0.18s;
-        }
-        .skill-tile.active .skill-check {
-            background: var(--red);
-            border-color: var(--red);
-            color: white;
-        }
-        .skill-hint {
-            font-family: var(--mono);
-            font-size: 0.65rem; color: var(--muted);
-            margin-top: 12px; letter-spacing: 0.1em;
-        }
-        #skillsInput { display: none; }
+        --text:         #111827;
+        --text-2:       #374151;
+        --muted:        #9ca3af;
+        --muted-2:      #6b7280;
 
-        /* ─── FORM FIELDS ─── */
-        .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; }
-        .field { margin-bottom: 18px; }
-        .field:last-child { margin-bottom: 0; }
-        .field-label {
-            display: block;
-            font-family: var(--mono);
-            font-size: 0.62rem; letter-spacing: 0.15em;
-            text-transform: uppercase; color: var(--muted);
-            margin-bottom: 8px;
-        }
-        .field-label .req { color: var(--red); margin-left: 3px; }
-        .field-input, .field-select, .field-textarea {
-            width: 100%;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 11px 14px;
-            font-family: var(--body);
-            font-size: 0.85rem;
-            color: var(--text);
-            outline: none;
-            transition: border-color 0.18s;
-            -webkit-appearance: none;
-        }
-        .field-input::placeholder, .field-textarea::placeholder { color: var(--muted); }
-        .field-input:focus, .field-select:focus, .field-textarea:focus { border-color: rgba(232,39,26,0.45); }
-        .field-textarea { resize: vertical; min-height: 88px; font-family: var(--body); }
-        .field-select { cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236B6865' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 36px; }
+        --ff-head: 'Syne', sans-serif;
+        --ff-body: 'DM Sans', sans-serif;
+        --ff-mono: 'DM Mono', monospace;
 
-        /* ─── MAP ─── */
-        #map {
-            height: 210px;
-            border-radius: 10px;
-            border: 1px solid var(--border);
-            margin-top: 4px;
-        }
-        .leaflet-container { background: #1a1a1a; }
-        .coord-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
-        .coord-display {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 9px 12px;
-            font-family: var(--mono);
-            font-size: 0.72rem;
-            color: var(--muted2);
-            outline: none;
-            width: 100%;
-        }
+        --r-sm: 6px;
+        --r-md: 10px;
+        --r-lg: 14px;
+        --ease: .18s cubic-bezier(.4,0,.2,1);
 
-        /* ─── SUBMIT ─── */
-        .btn-submit {
-            display: flex; align-items: center; justify-content: center; gap: 10px;
-            width: 100%;
-            background: var(--red);
-            border: none; border-radius: 10px;
-            padding: 15px;
-            font-family: var(--body);
-            font-size: 0.85rem; font-weight: 700;
-            letter-spacing: 0.1em; text-transform: uppercase;
-            color: white; cursor: pointer;
-            transition: background 0.18s, transform 0.18s, box-shadow 0.18s;
-            margin-top: 4px;
-        }
-        .btn-submit:hover {
-            background: #C82216;
-            transform: translateY(-2px);
-            box-shadow: 0 8px 28px rgba(232,39,26,0.3);
-        }
+        --shadow-sm: 0 1px 3px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.05);
+        --shadow-md: 0 4px 12px rgba(0,0,0,.08);
+    }
 
-        /* ─── SIDEBAR CARDS ─── */
-        .side-block {
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 14px;
-            overflow: hidden;
-            margin-bottom: 16px;
-        }
-        .side-head {
-            padding: 14px 18px;
-            background: var(--card2);
-            border-bottom: 1px solid var(--border);
-            font-family: var(--mono);
-            font-size: 0.63rem; letter-spacing: 0.18em;
-            text-transform: uppercase; color: var(--muted);
-        }
-        .side-body { padding: 16px 18px; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body { font-family: var(--ff-body); background: var(--bg); color: var(--text); min-height: 100vh; }
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 3px; }
 
-        .benefit-item {
-            display: flex; align-items: flex-start; gap: 12px;
-            padding: 10px 0;
-            border-bottom: 1px solid var(--border);
-            font-size: 0.82rem; color: var(--muted2);
-            line-height: 1.55;
-        }
-        .benefit-item:last-child { border-bottom: none; padding-bottom: 0; }
-        .benefit-item i { color: #4ADE80; margin-top: 2px; flex-shrink: 0; font-size: 0.75rem; }
+    /* ── Navbar ──────────────────────────────────────────────────────── */
+    .nav {
+        position: sticky; top: 0; z-index: 200;
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 0 32px; height: 60px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        box-shadow: var(--shadow-sm);
+    }
+    .nav-brand {
+        font-family: var(--ff-head);
+        font-size: 1.25rem; font-weight: 800; letter-spacing: -.01em;
+        color: var(--red); text-decoration: none;
+        display: flex; align-items: center; gap: 8px;
+    }
+    .nav-brand span { color: var(--text); }
+    .nav-right { display: flex; align-items: center; gap: 4px; }
+    .nav-pill {
+        font-size: .75rem; font-weight: 500;
+        color: var(--muted-2); text-decoration: none;
+        padding: 6px 13px; border-radius: var(--r-sm);
+        border: 1px solid transparent;
+        transition: all var(--ease); white-space: nowrap;
+    }
+    .nav-pill:hover { color: var(--text); background: var(--surface-2); border-color: var(--border); }
+    .nav-pill.active { color: var(--text); background: var(--surface-2); border-color: var(--border); font-weight: 600; }
+    .nav-pill.danger:hover { color: var(--red); background: var(--red-dim); border-color: var(--red-border); }
 
-        .status-row {
-            display: flex; align-items: center; gap: 14px;
-            padding: 11px 0;
-            border-bottom: 1px solid var(--border);
-        }
-        .status-row:last-child { border-bottom: none; padding-bottom: 0; }
-        .status-pill-sm {
-            display: inline-flex; align-items: center; gap: 6px;
-            font-size: 0.68rem; font-weight: 600;
-            letter-spacing: 0.08em; text-transform: uppercase;
-            padding: 5px 12px; border-radius: 100px;
-            border: 1px solid; white-space: nowrap;
-            min-width: 108px; justify-content: center;
-        }
-        .pill-green { background: var(--green-dim); border-color: var(--green-border); color: #4ADE80; }
-        .pill-amber { background: var(--amber-dim); border-color: var(--amber-border); color: #FBBF24; }
-        .pill-gray { background: rgba(100,100,100,0.08); border-color: var(--border); color: var(--muted2); }
-        .status-desc { font-size: 0.78rem; color: var(--muted); }
+    /* ── Page header ─────────────────────────────────────────────────── */
+    .page-header {
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        padding: 32px;
+        position: relative; overflow: hidden;
+    }
+    /* Subtle red accent top bar */
+    .page-header::before {
+        content: ''; position: absolute; top: 0; left: 0; right: 0;
+        height: 3px; background: var(--red);
+    }
+    .page-header-inner { max-width: 1200px; margin: 0 auto; }
+    .eyebrow {
+        font-family: var(--ff-mono);
+        font-size: .65rem; letter-spacing: .2em;
+        text-transform: uppercase; color: var(--red);
+        margin-bottom: 6px;
+    }
+    .page-title {
+        font-family: var(--ff-head);
+        font-size: clamp(2rem, 4vw, 3rem);
+        font-weight: 800; letter-spacing: -.02em; line-height: 1;
+        color: var(--text);
+    }
+    .page-sub { font-size: .85rem; color: var(--muted-2); margin-top: 6px; }
 
-        .profile-badge {
-            display: flex; align-items: center; gap: 14px;
-            padding: 16px 18px;
-        }
-        .profile-avatar {
-            width: 46px; height: 46px;
-            background: var(--red-dim);
-            border: 1px solid var(--red-border);
-            border-radius: 12px;
-            display: flex; align-items: center; justify-content: center;
-            font-family: var(--heading);
-            font-size: 1.3rem;
-            color: var(--red);
-            flex-shrink: 0;
-        }
-        .profile-name { font-size: 0.92rem; font-weight: 600; }
-        .profile-role {
-            font-family: var(--mono);
-            font-size: 0.62rem; letter-spacing: 0.12em;
-            text-transform: uppercase; color: var(--muted);
-            margin-top: 3px;
-        }
+    /* ── Layout ──────────────────────────────────────────────────────── */
+    .page { max-width: 1200px; margin: 0 auto; padding: 24px 32px 80px; }
+    .grid-main { display: grid; grid-template-columns: 1fr 340px; gap: 16px; align-items: start; }
 
-        /* ─── REVEAL ─── */
-        .reveal { opacity: 0; transform: translateY(14px); transition: opacity 0.5s ease, transform 0.5s ease; }
-        .reveal.in { opacity: 1; transform: translateY(0); }
+    /* ── Toast ───────────────────────────────────────────────────────── */
+    .toast-bar {
+        display: flex; align-items: center; gap: 10px;
+        padding: 13px 18px; border-radius: var(--r-md);
+        font-size: .85rem; font-weight: 500;
+        margin-bottom: 18px; border: 1px solid;
+    }
+    .toast-success { background: var(--green-dim); border-color: var(--green-border); color: var(--green); }
+    .toast-error   { background: var(--red-dim);   border-color: var(--red-border);   color: var(--red); }
 
-        @media (max-width: 960px) {
-            .nav { padding: 12px 16px; }
-            .page-header { padding: 28px 16px 24px; }
-            .page { padding: 20px 16px 60px; }
-            .grid-main { grid-template-columns: 1fr; }
-            .field-row { grid-template-columns: 1fr; }
-            .skill-grid { grid-template-columns: 1fr; }
-        }
+    /* ── Form blocks ─────────────────────────────────────────────────── */
+    .form-block {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--r-lg);
+        overflow: hidden; margin-bottom: 14px;
+        box-shadow: var(--shadow-sm);
+    }
+    .block-head {
+        display: flex; align-items: center; gap: 9px;
+        padding: 13px 18px;
+        background: var(--surface-2);
+        border-bottom: 1px solid var(--border);
+        font-family: var(--ff-mono);
+        font-size: .65rem; letter-spacing: .17em;
+        text-transform: uppercase; color: var(--muted-2);
+        font-weight: 500;
+    }
+    .block-head i { color: var(--red); font-size: .85rem; }
+    .block-body { padding: 20px 18px; }
+
+    /* ── Skill grid ──────────────────────────────────────────────────── */
+    .skill-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 8px; }
+
+    .skill-tile {
+        display: flex; align-items: center; gap: 11px;
+        padding: 11px 13px;
+        background: var(--surface-2);
+        border: 1.5px solid var(--border);
+        border-radius: var(--r-md);
+        cursor: pointer; transition: all var(--ease);
+        user-select: none;
+    }
+    .skill-tile:hover { border-color: var(--border-2); background: var(--surface-3); }
+    .skill-tile.active {
+        background: var(--red-dim);
+        border-color: var(--red-border);
+    }
+    .skill-tile.active .skill-icon { color: var(--red); }
+    .skill-tile.active .skill-name { color: var(--text); font-weight: 600; }
+
+    .skill-icon {
+        width: 30px; height: 30px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: .88rem; color: var(--muted-2); flex-shrink: 0;
+        transition: color var(--ease);
+    }
+    .skill-name { font-size: .82rem; font-weight: 500; color: var(--muted-2); transition: color var(--ease); }
+
+    .skill-check {
+        margin-left: auto;
+        width: 18px; height: 18px; border-radius: 50%;
+        border: 1.5px solid var(--border-2);
+        display: flex; align-items: center; justify-content: center;
+        font-size: .55rem; color: transparent; flex-shrink: 0;
+        transition: all var(--ease);
+    }
+    .skill-tile.active .skill-check { background: var(--red); border-color: var(--red); color: #fff; }
+
+    .skill-hint {
+        font-family: var(--ff-mono);
+        font-size: .65rem; color: var(--muted);
+        margin-top: 12px; letter-spacing: .08em;
+    }
+    #skillsInput { display: none; }
+
+    /* ── Form fields ─────────────────────────────────────────────────── */
+    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px; }
+    .field { margin-bottom: 16px; }
+    .field:last-child { margin-bottom: 0; }
+
+    .field-label {
+        display: block;
+        font-family: var(--ff-mono);
+        font-size: .62rem; letter-spacing: .13em;
+        text-transform: uppercase; color: var(--muted-2);
+        margin-bottom: 7px; font-weight: 500;
+    }
+    .field-label .req { color: var(--red); margin-left: 3px; }
+
+    .field-input, .field-select, .field-textarea {
+        width: 100%;
+        background: var(--surface);
+        border: 1.5px solid var(--border);
+        border-radius: var(--r-sm);
+        padding: 10px 13px;
+        font-family: var(--ff-body); font-size: .85rem;
+        color: var(--text); outline: none;
+        transition: border-color var(--ease), box-shadow var(--ease);
+        -webkit-appearance: none;
+    }
+    .field-input::placeholder, .field-textarea::placeholder { color: var(--muted); }
+    .field-input:focus, .field-select:focus, .field-textarea:focus {
+        border-color: var(--red);
+        box-shadow: 0 0 0 3px var(--red-dim);
+    }
+    .field-textarea { resize: vertical; min-height: 84px; }
+    .field-select {
+        cursor: pointer;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+        background-repeat: no-repeat; background-position: right 12px center;
+        padding-right: 36px;
+    }
+
+    /* ── Map ─────────────────────────────────────────────────────────── */
+    #map {
+        height: 210px; border-radius: var(--r-md);
+        border: 1.5px solid var(--border); margin-top: 4px;
+    }
+    .coord-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+    .coord-display {
+        background: var(--surface-2); border: 1px solid var(--border);
+        border-radius: var(--r-sm); padding: 9px 12px;
+        font-family: var(--ff-mono); font-size: .72rem;
+        color: var(--muted-2); outline: none; width: 100%;
+    }
+
+    /* ── Submit ──────────────────────────────────────────────────────── */
+    .btn-submit {
+        display: flex; align-items: center; justify-content: center; gap: 9px;
+        width: 100%; background: var(--red);
+        border: none; border-radius: var(--r-md);
+        padding: 14px;
+        font-family: var(--ff-body);
+        font-size: .85rem; font-weight: 700;
+        letter-spacing: .08em; text-transform: uppercase;
+        color: #fff; cursor: pointer;
+        transition: background var(--ease), transform var(--ease), box-shadow var(--ease);
+        margin-top: 4px;
+    }
+    .btn-submit:hover {
+        background: #b91c1c;
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(220,38,38,.28);
+    }
+
+    /* ── Sidebar blocks ──────────────────────────────────────────────── */
+    .side-block {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--r-lg);
+        overflow: hidden; margin-bottom: 12px;
+        box-shadow: var(--shadow-sm);
+    }
+    .side-head {
+        padding: 12px 16px;
+        background: var(--surface-2);
+        border-bottom: 1px solid var(--border);
+        font-family: var(--ff-mono);
+        font-size: .63rem; letter-spacing: .17em;
+        text-transform: uppercase; color: var(--muted-2);
+        font-weight: 500;
+    }
+    .side-body { padding: 14px 16px; }
+
+    /* Profile badge */
+    .profile-badge {
+        display: flex; align-items: center; gap: 13px;
+        padding: 16px;
+    }
+    .profile-avatar {
+        width: 46px; height: 46px;
+        background: var(--red-dim);
+        border: 2px solid var(--red-border);
+        border-radius: 12px;
+        display: flex; align-items: center; justify-content: center;
+        font-family: var(--ff-head); font-size: 1.3rem;
+        color: var(--red); flex-shrink: 0;
+    }
+    .profile-name { font-size: .92rem; font-weight: 700; color: var(--text); }
+    .profile-role {
+        font-family: var(--ff-mono);
+        font-size: .62rem; letter-spacing: .1em;
+        text-transform: uppercase; color: var(--muted);
+        margin-top: 3px;
+    }
+
+    /* Status rows */
+    .status-row {
+        display: flex; align-items: center; gap: 12px;
+        padding: 10px 0; border-bottom: 1px solid var(--border);
+    }
+    .status-row:last-child { border-bottom: none; padding-bottom: 0; }
+    .status-pill-sm {
+        display: inline-flex; align-items: center; gap: 5px;
+        font-size: .68rem; font-weight: 700;
+        letter-spacing: .06em; text-transform: uppercase;
+        padding: 4px 11px; border-radius: 100px;
+        border: 1.5px solid; white-space: nowrap;
+        min-width: 100px; justify-content: center;
+    }
+    .pill-green { background: var(--green-dim); border-color: var(--green-border); color: var(--green); }
+    .pill-amber { background: var(--amber-dim); border-color: var(--amber-border); color: var(--amber); }
+    .pill-gray  { background: var(--surface-2); border-color: var(--border-2);     color: var(--muted-2); }
+    .status-desc { font-size: .78rem; color: var(--muted-2); }
+
+    /* Benefit items */
+    .benefit-item {
+        display: flex; align-items: flex-start; gap: 10px;
+        padding: 9px 0; border-bottom: 1px solid var(--border);
+        font-size: .81rem; color: var(--text-2); line-height: 1.55;
+    }
+    .benefit-item:last-child { border-bottom: none; padding-bottom: 0; }
+    .benefit-item i { color: var(--green); margin-top: 2px; flex-shrink: 0; font-size: .72rem; }
+
+    /* ── Reveal ──────────────────────────────────────────────────────── */
+    .reveal { opacity: 0; transform: translateY(14px); transition: opacity .45s ease, transform .45s ease; }
+    .reveal.in { opacity: 1; transform: translateY(0); }
+
+    @media (max-width: 960px) {
+        .nav { padding: 0 16px; }
+        .page-header { padding: 24px 16px; }
+        .page { padding: 18px 16px 60px; }
+        .grid-main { grid-template-columns: 1fr; }
+        .field-row { grid-template-columns: 1fr; }
+        .skill-grid { grid-template-columns: 1fr; }
+    }
     </style>
 </head>
 <body>
 
-<!-- ─── NAV ─── -->
+<!-- ── NAV ──────────────────────────────────────────────────────────── -->
 <nav class="nav">
     <a href="my_tasks.php" class="nav-brand"><i class="fas fa-hands-helping"></i><span>Volunteer</span>HQ</a>
     <div class="nav-right">
-        <a href="my_tasks.php" class="nav-link-pill">My Tasks</a>
-        <a href="register.php" class="nav-link-pill active">Profile</a>
-        <a href="../mapping/map.php" class="nav-link-pill">Map</a>
-        <a href="../auth/logout.php" class="nav-link-pill danger" onclick="return confirm('Sign out?')">Logout</a>
+        <a href="my_tasks.php" class="nav-pill">My Tasks</a>
+        <a href="register.php" class="nav-pill active">Profile</a>
+        <a href="../mapping/map.php" class="nav-pill">Map</a>
+        <a href="../auth/logout.php" class="nav-pill danger" onclick="return confirm('Sign out?')">Logout</a>
     </div>
 </nav>
 
-<!-- ─── PAGE HEADER ─── -->
+<!-- ── Page header ───────────────────────────────────────────────────── -->
 <div class="page-header">
     <div class="page-header-inner">
         <div class="eyebrow">// Volunteer Portal</div>
-        <h1 class="page-title"><?= $existing_profile ? 'UPDATE PROFILE' : 'REGISTER AS VOLUNTEER' ?></h1>
+        <h1 class="page-title"><?= $existing_profile ? 'Update Profile' : 'Register as Volunteer' ?></h1>
         <p class="page-sub">Register your skills and availability to be matched with disaster response tasks</p>
     </div>
 </div>
@@ -459,18 +457,19 @@ $phone_emergency    = $existing_profile['phone_emergency'] ?? '';
     <?php endif; ?>
 
     <form method="POST" id="volunteerForm">
-        <input type="hidden" name="action" value="register_volunteer">
-        <input type="hidden" name="latitude" id="latitude" value="<?= $existing_profile['latitude'] ?? '' ?>">
+        <input type="hidden" name="action"    value="register_volunteer">
+        <input type="hidden" name="latitude"  id="latitude"  value="<?= $existing_profile['latitude']  ?? '' ?>">
         <input type="hidden" name="longitude" id="longitude" value="<?= $existing_profile['longitude'] ?? '' ?>">
-        <input type="hidden" name="skills" id="skillsInput" value="<?= htmlspecialchars(implode(',', $skills_array)) ?>">
+        <input type="hidden" name="skills"    id="skillsInput" value="<?= htmlspecialchars(implode(',', $skills_array)) ?>">
 
         <div class="grid-main">
-            <!-- ─── MAIN COLUMN ─── -->
+
+            <!-- ── Main column ─────────────────────────────────────── -->
             <div>
 
                 <!-- SKILLS -->
                 <div class="form-block reveal">
-                    <div class="block-head"><i class="fas fa-star"></i> Skills & Expertise</div>
+                    <div class="block-head"><i class="fas fa-star"></i> Skills &amp; Expertise</div>
                     <div class="block-body">
                         <div class="skill-grid">
                             <?php foreach ($skill_options as $key => $skill): ?>
@@ -487,16 +486,16 @@ $phone_emergency    = $existing_profile['phone_emergency'] ?? '';
                     </div>
                 </div>
 
-                <!-- AVAILABILITY & EXPERIENCE -->
+                <!-- STATUS & EXPERIENCE -->
                 <div class="form-block reveal">
-                    <div class="block-head"><i class="fas fa-sliders"></i> Status & Experience</div>
+                    <div class="block-head"><i class="fas fa-sliders"></i> Status &amp; Experience</div>
                     <div class="block-body">
                         <div class="field-row">
                             <div class="field">
                                 <label class="field-label">Availability Status</label>
                                 <select name="availability_status" class="field-select">
-                                    <option value="available" <?= $availability_status == 'available' ? 'selected' : '' ?>>Available — Ready now</option>
-                                    <option value="busy"      <?= $availability_status == 'busy'      ? 'selected' : '' ?>>Busy — On a task</option>
+                                    <option value="available"   <?= $availability_status == 'available'   ? 'selected' : '' ?>>Available — Ready now</option>
+                                    <option value="busy"        <?= $availability_status == 'busy'        ? 'selected' : '' ?>>Busy — On a task</option>
                                     <option value="unavailable" <?= $availability_status == 'unavailable' ? 'selected' : '' ?>>Unavailable</option>
                                 </select>
                             </div>
@@ -514,11 +513,13 @@ $phone_emergency    = $existing_profile['phone_emergency'] ?? '';
                         <div class="field-row">
                             <div class="field">
                                 <label class="field-label">Emergency Contact Phone</label>
-                                <input type="tel" name="phone_emergency" class="field-input" placeholder="+254 700 000 000" value="<?= htmlspecialchars($phone_emergency) ?>">
+                                <input type="tel" name="phone_emergency" class="field-input"
+                                       placeholder="+254 700 000 000" value="<?= htmlspecialchars($phone_emergency) ?>">
                             </div>
                             <div class="field">
-                                <label class="field-label">Certifications & Training</label>
-                                <input type="text" name="certifications" class="field-input" placeholder="e.g. First Aid, CPR, Rescue" value="<?= htmlspecialchars($certifications) ?>">
+                                <label class="field-label">Certifications &amp; Training</label>
+                                <input type="text" name="certifications" class="field-input"
+                                       placeholder="e.g. First Aid, CPR, Rescue" value="<?= htmlspecialchars($certifications) ?>">
                             </div>
                         </div>
                     </div>
@@ -531,8 +532,10 @@ $phone_emergency    = $existing_profile['phone_emergency'] ?? '';
                         <div class="skill-hint" style="margin-bottom:10px;">Click anywhere on the map to pin your location</div>
                         <div id="map"></div>
                         <div class="coord-row">
-                            <input type="text" id="latDisplay" class="coord-display" readonly placeholder="Latitude" value="<?= $existing_profile['latitude'] ?? '' ?>">
-                            <input type="text" id="lngDisplay" class="coord-display" readonly placeholder="Longitude" value="<?= $existing_profile['longitude'] ?? '' ?>">
+                            <input type="text" id="latDisplay" class="coord-display" readonly placeholder="Latitude"
+                                   value="<?= $existing_profile['latitude'] ?? '' ?>">
+                            <input type="text" id="lngDisplay" class="coord-display" readonly placeholder="Longitude"
+                                   value="<?= $existing_profile['longitude'] ?? '' ?>">
                         </div>
                     </div>
                 </div>
@@ -545,40 +548,46 @@ $phone_emergency    = $existing_profile['phone_emergency'] ?? '';
                 </div>
             </div>
 
-            <!-- ─── SIDEBAR ─── -->
+            <!-- ── Sidebar ──────────────────────────────────────────── -->
             <div>
 
-                <!-- PROFILE CARD -->
+                <!-- Profile card -->
                 <div class="side-block reveal">
                     <div class="profile-badge">
                         <div class="profile-avatar"><?= strtoupper(substr($_SESSION['full_name'], 0, 1)) ?></div>
                         <div>
                             <div class="profile-name"><?= htmlspecialchars($_SESSION['full_name']) ?></div>
-                            <div class="profile-role">Volunteer — <?= $existing_profile ? 'Profile Active' : 'Not Registered' ?></div>
+                            <div class="profile-role">Volunteer &mdash; <?= $existing_profile ? 'Profile Active' : 'Not Registered' ?></div>
                         </div>
                     </div>
                 </div>
 
-                <!-- STATUS GUIDE -->
+                <!-- Availability guide -->
                 <div class="side-block reveal">
                     <div class="side-head">Availability Guide</div>
                     <div class="side-body">
                         <div class="status-row">
-                            <div class="status-pill-sm pill-green"><span style="width:6px;height:6px;background:currentColor;border-radius:50%;"></span>Available</div>
+                            <div class="status-pill-sm pill-green">
+                                <span style="width:6px;height:6px;background:currentColor;border-radius:50%;"></span>Available
+                            </div>
                             <div class="status-desc">Ready to accept new assignments</div>
                         </div>
                         <div class="status-row">
-                            <div class="status-pill-sm pill-amber"><span style="width:6px;height:6px;background:currentColor;border-radius:50%;"></span>Busy</div>
+                            <div class="status-pill-sm pill-amber">
+                                <span style="width:6px;height:6px;background:currentColor;border-radius:50%;"></span>Busy
+                            </div>
                             <div class="status-desc">Currently working on a task</div>
                         </div>
                         <div class="status-row">
-                            <div class="status-pill-sm pill-gray"><span style="width:6px;height:6px;background:currentColor;border-radius:50%;"></span>Unavailable</div>
+                            <div class="status-pill-sm pill-gray">
+                                <span style="width:6px;height:6px;background:currentColor;border-radius:50%;"></span>Unavailable
+                            </div>
                             <div class="status-desc">Cannot take assignments right now</div>
                         </div>
                     </div>
                 </div>
 
-                <!-- WHY VOLUNTEER -->
+                <!-- Why volunteer -->
                 <div class="side-block reveal">
                     <div class="side-head">Why Volunteer?</div>
                     <div class="side-body">
@@ -597,9 +606,8 @@ $phone_emergency    = $existing_profile['phone_emergency'] ?? '';
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    // ─── MAP ───
-    const mapEl = document.getElementById('map');
-    const initLat = <?= ($existing_profile && $existing_profile['latitude']) ? $existing_profile['latitude'] : -1.2921 ?>;
+    // ── MAP ──
+    const initLat = <?= ($existing_profile && $existing_profile['latitude'])  ? $existing_profile['latitude']  : -1.2921 ?>;
     const initLng = <?= ($existing_profile && $existing_profile['longitude']) ? $existing_profile['longitude'] : 36.8219 ?>;
 
     const map = L.map('map').setView([initLat, initLng], 13);
@@ -609,26 +617,25 @@ $phone_emergency    = $existing_profile['phone_emergency'] ?? '';
 
     const redIcon = L.divIcon({
         className: '',
-        html: `<div style="width:14px;height:14px;background:#E8271A;border:2px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(232,39,26,0.5);"></div>`,
-        iconSize: [14, 14],
-        iconAnchor: [7, 7]
+        html: `<div style="width:14px;height:14px;background:#dc2626;border:2px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(220,38,38,.5);"></div>`,
+        iconSize: [14,14], iconAnchor: [7,7]
     });
 
     let marker = null;
     <?php if ($existing_profile && $existing_profile['latitude'] && $existing_profile['longitude']): ?>
-        marker = L.marker([<?= $existing_profile['latitude'] ?>, <?= $existing_profile['longitude'] ?>], {icon: redIcon}).addTo(map);
+    marker = L.marker([<?= $existing_profile['latitude'] ?>, <?= $existing_profile['longitude'] ?>], {icon: redIcon}).addTo(map);
     <?php endif; ?>
 
     map.on('click', function(e) {
         if (marker) map.removeLayer(marker);
         marker = L.marker(e.latlng, {icon: redIcon}).addTo(map);
-        document.getElementById('latitude').value = e.latlng.lat;
-        document.getElementById('longitude').value = e.latlng.lng;
-        document.getElementById('latDisplay').value = e.latlng.lat.toFixed(6);
-        document.getElementById('lngDisplay').value = e.latlng.lng.toFixed(6);
+        document.getElementById('latitude').value    = e.latlng.lat;
+        document.getElementById('longitude').value   = e.latlng.lng;
+        document.getElementById('latDisplay').value  = e.latlng.lat.toFixed(6);
+        document.getElementById('lngDisplay').value  = e.latlng.lng.toFixed(6);
     });
 
-    // ─── SKILLS ───
+    // ── SKILLS ──
     let selectedSkills = <?= json_encode($skills_array) ?>;
 
     function updateSkillsUI() {
@@ -652,7 +659,7 @@ $phone_emergency    = $existing_profile['phone_emergency'] ?? '';
         });
     });
 
-    // ─── REVEAL ───
+    // ── REVEAL ──
     const reveals = document.querySelectorAll('.reveal');
     const obs = new IntersectionObserver(entries => {
         entries.forEach((e, i) => {

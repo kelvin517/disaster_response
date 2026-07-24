@@ -1,9 +1,4 @@
 <?php
-/**
- * Live Incident Map Module
- * Disaster Response & Resource Coordination System
- * Author: Kevin Kiplangat | INTE/MK/1299/09/23
- */
 
 session_start();
 require_once __DIR__ . '/../../includes/config/config.php';

@@ -1,11 +1,4 @@
 <?php
-/**
- * Resource Request Module
- * Disaster Response & Resource Coordination System
- * Author: Kevin Kiplangat | INTE/MK/1299/09/23
- * 
- * Allows victims to submit requests for food, water, medicine, shelter, etc.
- */
 
 session_start();
 require_once __DIR__ . '/../../includes/config/config.php';

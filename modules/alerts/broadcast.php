@@ -1,12 +1,4 @@
 <?php
-/**
- * Broadcast Alert Module
- * Disaster Response & Resource Coordination System
- * Author: Kevin Kiplangat | INTE/MK/1299/09/23
- * 
- * Allows administrators to broadcast emergency alerts by county, radius, or to all users
- */
-
 session_start();
 require_once __DIR__ . '/../../includes/config/config.php';
 require_once __DIR__ . '/../../includes/functions/auth.php';
